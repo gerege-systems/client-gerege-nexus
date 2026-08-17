@@ -1,0 +1,172 @@
+# Gerege Client, as a Gerege Nexus distribution.
+#
+# Four services: postgres, the platform's migrations, this product's binary, and
+# the platform's shell. There is no second migration history here — this
+# repository has no schema of its own yet — and no redis: the core runs without
+# one and nothing on this host needs a second thing to keep alive.
+#
+# Required environment (deploy/.env, copied there by deploy.sh):
+#   CLIENT_NEXUS_POSTGRES_PASSWORD  this stack's own database
+#   SSO_DEFAULT_CLIENT_SECRET       the platform refuses to start without it in
+#                                   production — see config.ValidateProduction
+#   PUBLIC_ORIGIN                   where this instance answers
+#   SSO_CLIENT_*                    who signs people in — see .env.example
+#
+# THE PORTS ARE NOT FREE CHOICES AND ARE NOT THE CORE'S DEFAULTS. This stack
+# shares a host with nexus.gerege.mn itself, whose backend already holds
+# 127.0.0.1:8082 — the port the core's `snippets/nexus-oauth.conf` hardcodes.
+# So this deployment publishes 5439 / 8097 / 3017 and its vhost writes the OIDC
+# locations out itself instead of including that snippet. Including it here
+# would have quietly served the provider's discovery document from this
+# product's domain.
+
+name: client-nexus
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gerege_client_nexus_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: platform_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${CLIENT_NEXUS_POSTGRES_PASSWORD:?CLIENT_NEXUS_POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:5439:5432"
+    volumes:
+      - gerege_client_nexus_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d platform_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: ${IMAGE:-client-nexus:latest}
+    container_name: gerege_client_nexus_migrate
+    # The platform's migrations, from the core version this product's go.mod
+    # pins — the image carries both, so they cannot drift apart.
+    command: ["/app/migrate", "up"]
+    environment:
+      DATABASE_URL: postgres://postgres:${CLIENT_NEXUS_POSTGRES_PASSWORD}@postgres:5432/platform_db?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    image: ${IMAGE:-client-nexus:latest}
+    container_name: gerege_client_nexus_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://postgres:${CLIENT_NEXUS_POSTGRES_PASSWORD}@postgres:5432/platform_db?sslmode=disable
+      ENVIRONMENT: production
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://client.gerege.mn}
+      ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-https://client.gerege.mn}
+      # nginx terminates TLS in front of this, so the forwarded client address
+      # can be trusted — and the login rate limiter counts on it being real.
+      TRUST_PROXY_HEADERS: "true"
+
+      # The catalogue shipped in the image, fetched at build time from the
+      # pinned core. File mode: an instance that pulled a catalogue from a
+      # registry would be offering whatever that registry says today rather
+      # than what this binary can actually run.
+      APP_CATALOG_PATH: /app/catalog/apps.json
+      APP_CATALOG_URL: ""
+
+      # Its own issuer: SelfOrigin falls back to PUBLIC_ORIGIN, so every OAuth
+      # callback this instance mints points at itself. Being a client of
+      # nexus.gerege.mn does not stop this instance being a provider for the
+      # apps installed on it — core docs/SSO_FEDERATION.md, the third row.
+      SSO_DEFAULT_CLIENT_SECRET: ${SSO_DEFAULT_CLIENT_SECRET:?SSO_DEFAULT_CLIENT_SECRET is required}
+
+      # ------------------------------------------- this instance as a client
+      #
+      # With an issuer set, this deployment stops identifying anybody itself:
+      # /login sends the browser to the provider. SSO_CLIENT_REDIRECT_URI is
+      # deliberately absent — it defaults to ${SSO_ISSUER}/api/v1/auth/sso/callback,
+      # which is PUBLIC_ORIGIN here and is exactly what is registered on the
+      # provider. Naming it again is a second place to get it wrong.
+      SSO_CLIENT_ISSUER: ${SSO_CLIENT_ISSUER:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-}
+      SSO_CLIENT_PROVIDER_NAME: ${SSO_CLIENT_PROVIDER_NAME:-}
+      SSO_CLIENT_SCOPES: ${SSO_CLIENT_SCOPES:-}
+      # Somebody the provider vouches for who has no account here is created in
+      # this tenant. Empty rejects them instead, which on this deployment would
+      # mean nobody but the seeded admin can ever sign in.
+      SSO_CLIENT_TENANT: ${SSO_CLIENT_TENANT:-}
+      # The way back in when the provider is down: true re-enables the local
+      # password and eID screens. Restarting the backend is the whole change.
+      SSO_CLIENT_LOCAL_LOGIN: ${SSO_CLIENT_LOCAL_LOGIN:-false}
+
+      # What this deployment calls itself. The browser app is given the same
+      # name and four more; these two are halves of one setting, and a stack
+      # that renames only one of them has a sign-in screen and an eID prompt
+      # disagreeing about which product somebody is standing in front of.
+      BRAND_NAME: ${BRAND_NAME:-}
+
+      # «Өртөө» — the cross-installation task channel (core docs/URTUU.md).
+      #
+      # Without a key the channel is OFF and the platform starts normally: no
+      # link can be made and /.well-known/urtuu.json answers that this
+      # installation does not run Өртөө.
+      #
+      # NEVER ROTATED. The installation id is derived from it, so a new key
+      # invalidates every existing link's token and leaves the far side holding
+      # the wrong public key.
+      URTUU_SIGNING_KEY: ${URTUU_SIGNING_KEY:-}
+
+      # No demo data in production. The seeded account has a published password.
+      SEED_DEMO_DATA: "false"
+      DEMO_MODE: "false"
+    ports:
+      - "127.0.0.1:8097:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # The platform's own shell, unmodified — the core's published image rather
+  # than a build of our own.
+  #
+  # A distribution does not fork the frontend: the sidebar and every module
+  # screen are catalogue-driven, so the generic shell already renders whatever
+  # this instance installs. Pulling it instead of building it is possible
+  # because the shell is origin-agnostic (frontend/lib/apiBase.ts) — the same
+  # image serves nexus.gerege.mn on this host. WEB_IMAGE pins the core commit;
+  # keep it on the tag that matches go.mod's core version.
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE is required}
+    container_name: gerege_client_nexus_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Where the shell asks, server-side, what this deployment is. The browser
+      # never uses it: it asks its own origin (lib/apiBase.ts). A server has no
+      # origin, which is the whole reason this exists.
+      API_INTERNAL_URL: http://backend:8080/api/v1
+      # Read per request — see frontend/lib/brand.ts — so brand is a setting
+      # rather than a build.
+      BRAND_NAME: ${BRAND_NAME:-}
+      BRAND_SHORT_NAME: ${BRAND_SHORT_NAME:-}
+      BRAND_DESCRIPTION: ${BRAND_DESCRIPTION:-}
+      BRAND_LOGO_URL: ${BRAND_LOGO_URL:-}
+      BRAND_THEME_COLOR: ${BRAND_THEME_COLOR:-}
+      BRAND_ICON_URL: ${BRAND_ICON_URL:-}
+      BRAND_MASKABLE_ICON_URL: ${BRAND_MASKABLE_ICON_URL:-}
+    ports:
+      - "127.0.0.1:3017:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  gerege_client_nexus_postgres_data:

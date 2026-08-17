@@ -1,0 +1,4 @@
+/client-gerege-nexus
+*.env
+!.env.example
+brand/
