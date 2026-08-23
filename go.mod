@@ -4,10 +4,11 @@ go 1.26
 
 require (
 	github.com/gerege-systems/open-gerege-core v1.10.0
-	github.com/gerege-systems/open-gerege-nexus/backend v1.10.1
+	github.com/gerege-systems/open-gerege-nexus/backend v1.11.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/prometheus/client_golang v1.24.1
 )
 
 require (
@@ -39,7 +40,6 @@ require (
 	github.com/pdfcpu/pdfcpu v0.14.0 // indirect
 	github.com/pquerna/otp v1.5.0 // indirect
 	github.com/pressly/goose/v3 v3.27.3 // indirect
-	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect

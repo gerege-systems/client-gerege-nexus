@@ -1,0 +1,21 @@
+{
+  "app_id": "io.gerege.nexus.urtuu",
+  "entries": [
+    {
+      "version": "1.0.0",
+      "released_at": "2026-08-15",
+      "kind": "feature",
+      "summary": {
+        "mn": "Платформ хоорондын даалгаврын суваг: код сонгож даалгавар илгээх, ирсэн даалгаврыг хүлээн авах, доошоо задлах, биелэлтийг дээшээ буцаах.",
+        "en": "The task channel between installations: raise work under a code and send it down, take in what arrives, split it further, and report completion back up."
+      },
+      "details": {
+        "mn": "Их Монгол Улсын өртөө шуудангийн зарчим: захиаг өртөөнөөс өртөөнд дамжуулж, хүрсэн эсэхийг нь буцааж мэдэгддэг. Даалгавар чөлөөт текстээр үүсэхгүй — урьдчилан бүртгэгдсэн хүсэлтийн кодоор үүснэ, код нь юу бөглөхийг (schema) болон хэдий хугацаанд хийхийг (SLA) өөрөө хэлнэ. Задаргаа хийхэд доод бүрд тусдаа даалгавар үүсэж эхтэйгээ холбогдоно; доод бүгд биелэхэд эх нь өөрөө биелсэн болно. Шилжилт бүр эх платформ руу буцаж, тухайн даалгаврын түүхэнд хэн, хэзээ, ямар шалтгаантайг үлдээнэ. Мөчлөгөөс origin_chain хамгаална: даалгавар өөр дээрээ эргэж ирвэл шалтгаантай буцаана. Суваг нь платформын дэд бүтэц (Тохиргоо → Өртөө) тул энэ аппыг устгасан ч замд яваа ажил алга болохгүй. Аппын нүүр нь самбар: холбоос бүрийн эрүүл мэнд, задаргааны модны биелэлт, хугацаа хэтэрсний улаан бүс. Тайлангийн хөдөлгүүрт гурван тайлан бүртгэгдэнэ — даалгаврын биелэлт, хугацаа хэтрэлт, сувгийн ачаалал — тэдгээр нь reports.schedule-ээр хуваарьт илгээгдэж болно.",
+        "en": "The principle of the Mongol Empire's relay posts: a dispatch is carried from post to post and word of its arrival comes back the same way. A task is never free text — it is raised under a registered request code, and the code itself says what has to be filled in and how long the work is allowed. Splitting one creates a separate task per subordinate, joined to its parent, and the parent completes by itself once every branch has. Every transition travels back to the installation that raised the work and leaves who, when and why in the task's own history. A task that finds this installation already on its origin chain is returned with a reason, so a cycle in the peer graph cannot become a task that never terminates. The channel underneath is platform configuration (Settings → Өртөө), so removing this app does not strand work already in flight. The app's front page is a board: the health of every link, how far each fan-out has got, and a red zone of what is late. Three reports register with the reporting engine — task completion, SLA breaches and channel load — and can be mailed out on a schedule like any other."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    }
+  ]
+}

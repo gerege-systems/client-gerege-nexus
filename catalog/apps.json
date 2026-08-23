@@ -124,5 +124,47 @@
         "category": "Productividad"
       }
     }
+  },
+  {
+    "id": "io.gerege.nexus.urtuu",
+    "slug": "urtuu",
+    "name": "Urtuu Relay",
+    "description": "The relay between installations: service requests travel down as tasks, and what was done travels back up. Every step is recorded, timed and reportable.",
+    "icon_url": "/icons/urtuu.png",
+    "category": "Platform",
+    "visibility": "public",
+    "version": "1.0.0",
+    "translations": {
+      "mn": {
+        "name": "Өртөө",
+        "description": "Платформ хоорондын суваг: үйлчилгээний хүсэлт доошоо даалгавар болон урсаж, биелэлт нь дээшээ буцна. Алхам бүр бүртгэгдэж, хугацаа нь тоологдож, тайлагнагдана.",
+        "category": "Платформ"
+      },
+      "ar": {
+        "name": "أُرتو",
+        "description": "قناة بين المنصّات: تنزل طلبات الخدمة مهامّاً إلى الأسفل ويعود إنجازها إلى الأعلى، وكل خطوة مسجّلة ومحسوبة زمنياً وقابلة للتقرير.",
+        "category": "المنصة"
+      },
+      "zh": {
+        "name": "驿站",
+        "description": "平台之间的通道：服务请求以任务形式下行，完成情况回传上行；每一步都有记录、计时并可出报表。",
+        "category": "平台"
+      },
+      "fr": {
+        "name": "Urtuu",
+        "description": "Le relais entre installations : les demandes de service descendent sous forme de tâches et ce qui a été fait remonte. Chaque étape est enregistrée, chronométrée et exploitable en rapport.",
+        "category": "Plateforme"
+      },
+      "ru": {
+        "name": "Уртуу",
+        "description": "Канал между платформами: запросы на услуги спускаются вниз заданиями, а исполнение возвращается наверх. Каждый шаг фиксируется, засекается по времени и попадает в отчёт.",
+        "category": "Платформа"
+      },
+      "es": {
+        "name": "Urtuu",
+        "description": "El relevo entre instalaciones: las solicitudes de servicio bajan como tareas y lo realizado vuelve a subir. Cada paso queda registrado, cronometrado y disponible para informes.",
+        "category": "Plataforma"
+      }
+    }
   }
 ]
