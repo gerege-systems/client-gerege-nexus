@@ -14,10 +14,10 @@
 // decision, and a distribution that compiled it in could not be pointed at a
 // second provider.
 //
-// It compiles no modules of its own yet. The repository is Level 2 from the
-// first commit so that adding the first module is a change to this file rather
-// than a migration of the deployment — go.mod, the image, the catalogue and
-// the stack are already in the shape a module needs.
+// It carries the e-Government link, which moved here from the platform on
+// 2026-08-23. The repository was Level 2 from the first commit precisely so
+// that this would be a change to one file rather than a migration of the
+// deployment, and it was.
 //
 // Modules go in the Options.Modules callback below and nowhere else. Logic
 // written in this file instead of in a module is logic no other deployment can
@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/gerege-systems/client-gerege-nexus/modules/egov"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/platform"
 )
@@ -38,11 +39,12 @@ func main() {
 	// cannot reach — must not exit 0 and read as a clean shutdown to whatever
 	// is supervising it.
 	err := platform.Run(platform.Options{
-		// Empty on purpose, not forgotten. Registering nothing here leaves the
-		// platform's own apps — organisation, egov, documents, reports,
-		// sso-clients, urtuu — which is exactly what this deployment offers
-		// today.
-		Modules: func(p nexus.Platform) {},
+		// Every module this distribution carries, constructed here and nowhere
+		// else. A module registers itself; what this callback decides is which
+		// ones exist in this binary at all.
+		Modules: func(p nexus.Platform) {
+			egov.New(p)
+		},
 	})
 	if err != nil {
 		slog.Error("gerege client stopped", "error", err)

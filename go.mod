@@ -2,7 +2,10 @@ module github.com/gerege-systems/client-gerege-nexus
 
 go 1.26
 
-require github.com/gerege-systems/open-gerege-nexus/backend v1.9.1
+require (
+	github.com/gerege-systems/open-gerege-nexus/backend v1.9.1
+	github.com/go-chi/chi/v5 v5.3.1
+)
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
@@ -19,7 +22,6 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gerege-systems/open-gerege-core v1.10.0 // indirect
 	github.com/getsentry/sentry-go v0.48.0 // indirect
-	github.com/go-chi/chi/v5 v5.3.1 // indirect
 	github.com/go-chi/cors v1.2.2 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -80,3 +82,5 @@ require (
 // package — but the image builds it, and the schema it applies has to come
 // from the same core version everything else here is compiled against.
 tool github.com/gerege-systems/open-gerege-nexus/backend/cmd/migrate
+
+replace github.com/gerege-systems/open-gerege-nexus/backend => /Users/edm5/Enigma/2026-08/open-gerege-nexus/backend
