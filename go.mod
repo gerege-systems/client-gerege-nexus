@@ -3,7 +3,7 @@ module github.com/gerege-systems/client-gerege-nexus
 go 1.26
 
 require (
-	github.com/gerege-systems/open-gerege-nexus/backend v1.9.1
+	github.com/gerege-systems/open-gerege-nexus/backend v1.10.0
 	github.com/go-chi/chi/v5 v5.3.1
 )
 
@@ -82,5 +82,3 @@ require (
 // package — but the image builds it, and the schema it applies has to come
 // from the same core version everything else here is compiled against.
 tool github.com/gerege-systems/open-gerege-nexus/backend/cmd/migrate
-
-replace github.com/gerege-systems/open-gerege-nexus/backend => /Users/edm5/Enigma/2026-08/open-gerege-nexus/backend
