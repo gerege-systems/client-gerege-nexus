@@ -1,0 +1,68 @@
+{
+  "id": "io.gerege.nexus.urtuu",
+  "name": "Urtuu Relay",
+  "version": "1.0.0",
+  "platform": ">=1.0.0",
+  "publisher": "gerege",
+  "authors": [
+    {
+      "name": "Gerege Systems Development Team"
+    }
+  ],
+  "maintainers": [
+    {
+      "name": "Gerege Systems Development Team"
+    }
+  ],
+  "repository": "https://github.com/gerege-systems/open-gerege-nexus",
+  "homepage": "https://nexus.gerege.mn",
+  "license": "Apache-2.0",
+  "dependencies": [],
+  "permissions": [
+    {
+      "code": "urtuu.read",
+      "name": "Read Urtuu",
+      "description": "See the incoming and outgoing task queues, the links and the dashboard"
+    },
+    {
+      "code": "urtuu.manage",
+      "name": "Manage Urtuu",
+      "description": "Establish links to other installations, open request codes, and raise and send tasks"
+    },
+    {
+      "code": "urtuu.process",
+      "name": "Process Urtuu Tasks",
+      "description": "Accept, return, delegate and complete tasks this organisation has been given"
+    }
+  ],
+  "menus": [
+    {
+      "id": "urtuu_board",
+      "label": "Urtuu board",
+      "path": "/module/urtuu",
+      "icon": "route",
+      "order": 1
+    },
+    {
+      "id": "urtuu_incoming",
+      "label": "Incoming tasks",
+      "path": "/module/urtuu/incoming",
+      "icon": "inbox",
+      "order": 2
+    },
+    {
+      "id": "urtuu_outgoing",
+      "label": "Sent tasks",
+      "path": "/module/urtuu/outgoing",
+      "icon": "send",
+      "order": 3
+    },
+    {
+      "id": "urtuu_links",
+      "label": "Links",
+      "path": "/module/urtuu/links",
+      "icon": "link-2",
+      "order": 4
+    }
+  ]
+}

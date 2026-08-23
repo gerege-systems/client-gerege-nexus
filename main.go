@@ -37,6 +37,7 @@ import (
 	"github.com/gerege-systems/client-gerege-nexus/modules/documents"
 	"github.com/gerege-systems/client-gerege-nexus/modules/egov"
 	"github.com/gerege-systems/client-gerege-nexus/modules/organisation"
+	"github.com/gerege-systems/client-gerege-nexus/modules/urtuu"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/platform"
 )
@@ -54,6 +55,31 @@ func signingRail() nexus.Signer {
 		slog.Warn("this deployment publishes no signing rail; documents will be approved rather than signed", "error", err)
 	}
 	return signer
+}
+
+// channel is the platform's link to other installations, or nothing.
+//
+// A deployment with no signing key is not half-joined to the ring, it is not
+// joined — and the app is still built, because what it registers is what makes
+// a backlog readable the day a key arrives.
+func channel() nexus.Link {
+	link, err := nexus.Capability[nexus.Link]()
+	if err != nil {
+		slog.Warn("this deployment provides no installation channel; Өртөө will carry nothing", "error", err)
+	}
+	return link
+}
+
+// theOtherEnd is the reading half of the same channel: who is on a link, what a
+// request code means, what has gone over it. Published by the platform since
+// backend/v1.11.0; before it the app read the channel's tables itself, which is
+// what kept it in the core (ADR 0004).
+func theOtherEnd() nexus.PeerDirectory {
+	peers, err := nexus.Capability[nexus.PeerDirectory]()
+	if err != nil {
+		slog.Warn("this deployment provides no peer directory; Өртөө will name links by id", "error", err)
+	}
+	return peers
 }
 
 func main() {
@@ -76,6 +102,19 @@ func main() {
 			// the routes for it.
 			documents.New(p, signingRail())
 			egov.New(p)
+			// Өртөө: the task board over the platform's channel to other
+			// installations. Two capabilities rather than one, and they are
+			// different halves: Link is how work is sent, PeerDirectory is how
+			// the other end is read. Both are the platform's — a link an
+			// administrator established keeps carrying what is in flight over
+			// it whatever apps come and go — so this app asks for them instead
+			// of owning them.
+			//
+			// Constructed whether or not this deployment has a signing key: the
+			// module registers the readers for arriving envelopes, and an
+			// installation given a key later must not need a second restart
+			// before its backlog is read.
+			urtuu.New(p, channel(), theOtherEnd())
 		},
 
 		// Every organisation gets the staff directory without asking. It was
