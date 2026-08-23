@@ -1,0 +1,49 @@
+{
+  "id": "io.gerege.nexus.documents",
+  "name": "Documents",
+  "version": "2.0.0",
+  "platform": ">=0.1.0 <2.0.0",
+  "order": 10,
+  "publisher": "gerege",
+  "authors": [
+    {
+      "name": "Gerege Systems Development Team"
+    }
+  ],
+  "maintainers": [
+    {
+      "name": "Gerege Systems Development Team"
+    }
+  ],
+  "repository": "https://github.com/gerege-systems/client-gerege-nexus",
+  "homepage": "https://nexus.gerege.mn",
+  "license": "Apache-2.0",
+  "dependencies": [],
+  "permissions": [
+    {
+      "code": "documents.read",
+      "name": "Read Documents",
+      "description": "Allows viewing documents, uploaded PDFs, signature status and the signature log"
+    },
+    {
+      "code": "documents.manage",
+      "name": "Manage Documents",
+      "description": "Allows creating documents, uploading PDFs, routing them for approval, running signing batches, and configuring templates, approval chains, signature policies, signing rails, stamp placement and retention rules"
+    },
+    {
+      "code": "documents.sign",
+      "name": "Sign Documents",
+      "description": "Allows applying an eID / DAN / HSM digital signature or rejecting a document"
+    }
+  ],
+  "menus": [
+    {
+      "id": "documents",
+      "parent_id": "operations",
+      "label": "Documents",
+      "path": "/documents",
+      "icon": "file-text",
+      "order": 50
+    }
+  ]
+}
