@@ -1,0 +1,21 @@
+{
+  "app_id": "io.gerege.nexus.reports",
+  "entries": [
+    {
+      "version": "1.0.0",
+      "released_at": "2026-08-12",
+      "kind": "feature",
+      "summary": {
+        "mn": "Суулгасан апп бүрийн тайлан нэг дэлгэцэд: график, Excel/CSV гаргалт, товлосон илгээлт.",
+        "en": "Every installed app's reports on one screen: charts, Excel and CSV export, scheduled delivery."
+      },
+      "details": {
+        "mn": "Тайлан бол дэлгэц биш, тунхаглал: модуль өөрийн тайлангаа Go-гийн Report интерфейсээр бүртгүүлэхэд жагсаалт, параметрын форм, хүснэгт, график, экспорт, хуваарь, audit бүртгэл нь автоматаар ирнэ. Тайлангийн query нь дуудагчийн тенант контекст дотор, зөвхөн уншдаг гүйлгээнд, 30 секундын statement_timeout-той ажиллана. Байгууллага тухайн аппыг суулгаагүй бол түүний тайлан жагсаалтад ч гарахгүй, түлхүүрээр нь дуудсан ч ажиллахгүй. Гүйлт бүр, экспорт бүр audit-д бичигдэнэ.",
+        "en": "A report is a declaration rather than a screen: a module registers one through a Go interface and the listing, parameter form, table, chart, export, schedule and audit entry all follow. Report queries run inside the caller's tenant context, in a read-only transaction, under a thirty-second statement timeout. A report belonging to an app the organisation has not installed is absent from the list and refused by key. Every run and every export is audited."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    }
+  ]
+}

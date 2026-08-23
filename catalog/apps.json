@@ -166,5 +166,47 @@
         "category": "Plataforma"
       }
     }
+  },
+  {
+    "id": "io.gerege.nexus.reports",
+    "slug": "reports",
+    "name": "Reports",
+    "description": "Business reports for every app this organisation has installed: run them on screen, chart them, export to Excel or CSV, and have them mailed out on a schedule.",
+    "icon_url": "/icons/reports.png",
+    "category": "Productivity",
+    "visibility": "public",
+    "version": "1.0.0",
+    "translations": {
+      "mn": {
+        "name": "Тайлан",
+        "description": "Байгууллагын суулгасан апп бүрийн бизнес тайлан: дэлгэц дээр ажиллуулах, график харах, Excel эсвэл CSV болгон гаргах, товлосон хугацаанд и-мэйлээр илгээх.",
+        "category": "Бүтээмж"
+      },
+      "ar": {
+        "name": "التقارير",
+        "description": "تقارير الأعمال لكل تطبيق ثبّتته المؤسسة: شغّلها على الشاشة، واعرضها كرسوم بيانية، وصدّرها إلى Excel أو CSV، وأرسلها بالبريد وفق جدول زمني.",
+        "category": "الإنتاجية"
+      },
+      "zh": {
+        "name": "报表",
+        "description": "为本组织已安装的每个应用提供业务报表：在线运行、图表展示、导出 Excel 或 CSV，并可按计划邮件发送。",
+        "category": "生产力"
+      },
+      "fr": {
+        "name": "Rapports",
+        "description": "Rapports d'activité pour chaque application installée : exécution à l'écran, graphiques, export Excel ou CSV, et envoi par courriel selon un calendrier.",
+        "category": "Productivité"
+      },
+      "ru": {
+        "name": "Отчёты",
+        "description": "Бизнес-отчёты по каждому установленному приложению: просмотр на экране, графики, экспорт в Excel или CSV и отправка по расписанию.",
+        "category": "Продуктивность"
+      },
+      "es": {
+        "name": "Informes",
+        "description": "Informes de negocio para cada aplicación instalada: ejecución en pantalla, gráficos, exportación a Excel o CSV y envío programado por correo.",
+        "category": "Productividad"
+      }
+    }
   }
 ]
