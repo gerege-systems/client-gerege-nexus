@@ -1,0 +1,47 @@
+{
+  "id": "io.gerege.nexus.reports",
+  "name": "Reports",
+  "version": "1.0.0",
+  "platform": ">=1.0.0",
+  "publisher": "gerege",
+  "authors": [
+    {
+      "name": "Gerege Systems Development Team"
+    }
+  ],
+  "maintainers": [
+    {
+      "name": "Gerege Systems Development Team"
+    }
+  ],
+  "repository": "https://github.com/gerege-systems/open-gerege-nexus",
+  "homepage": "https://nexus.gerege.mn",
+  "license": "Apache-2.0",
+  "dependencies": [],
+  "permissions": [
+    {
+      "code": "reports.view",
+      "name": "View Reports",
+      "description": "Run and export the reports of the apps this organisation has installed"
+    },
+    {
+      "code": "reports.schedule",
+      "name": "Schedule Reports",
+      "description": "Create and remove scheduled reports that are mailed out automatically"
+    },
+    {
+      "code": "reports.share",
+      "name": "Share Reports Across Organisations",
+      "description": "Ask another organisation to share a report, and agree to share this organisation's own"
+    }
+  ],
+  "menus": [
+    {
+      "id": "reports",
+      "label": "Reports",
+      "path": "/reports",
+      "icon": "bar-chart-3",
+      "order": 90
+    }
+  ]
+}

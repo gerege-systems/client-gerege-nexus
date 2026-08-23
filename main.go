@@ -37,6 +37,7 @@ import (
 	"github.com/gerege-systems/client-gerege-nexus/modules/documents"
 	"github.com/gerege-systems/client-gerege-nexus/modules/egov"
 	"github.com/gerege-systems/client-gerege-nexus/modules/organisation"
+	"github.com/gerege-systems/client-gerege-nexus/modules/reports"
 	"github.com/gerege-systems/client-gerege-nexus/modules/urtuu"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/platform"
@@ -82,6 +83,44 @@ func theOtherEnd() nexus.PeerDirectory {
 	return peers
 }
 
+// The four platform surfaces the reports app is built on. Each is asked for
+// rather than built: an engine of its own would be a second reader of the same
+// rows, and the records are the platform's because the platform acts on them.
+func reportEngine() nexus.ReportEngine {
+	engine, err := nexus.Capability[nexus.ReportEngine]()
+	if err != nil {
+		slog.Error("this deployment provides no report engine; reports will not run", "error", err)
+	}
+	return engine
+}
+
+func reportSchedules() nexus.ReportSchedules {
+	schedules, err := nexus.Capability[nexus.ReportSchedules]()
+	if err != nil {
+		slog.Error("this deployment keeps no report schedules", "error", err)
+	}
+	return schedules
+}
+
+func reportGrants() nexus.ReportGrants {
+	grants, err := nexus.Capability[nexus.ReportGrants]()
+	if err != nil {
+		slog.Error("this deployment keeps no report sharing agreements", "error", err)
+	}
+	return grants
+}
+
+// installedApps is the platform's own per-tenant gate: a tenant sees the
+// reports of the apps it has installed and no others, and "which apps" has
+// exactly one answer on this deployment.
+func installedApps() nexus.InstalledApps {
+	installed, err := nexus.Capability[nexus.InstalledApps]()
+	if err != nil {
+		slog.Error("this deployment cannot say which apps an organisation has", "error", err)
+	}
+	return installed
+}
+
 func main() {
 	// The error is checked and the exit code is the point: a distribution that
 	// cannot start — a catalogue that disagrees with its modules, a database it
@@ -115,6 +154,16 @@ func main() {
 			// installation given a key later must not need a second restart
 			// before its backlog is read.
 			urtuu.New(p, channel(), theOtherEnd())
+			// Reports last, and after every module that registers one: the app
+			// serves the registry, and a module constructed after it would have
+			// its reports missing from the first listing.
+			//
+			// Four things asked of the platform rather than built: the engine
+			// runs the SQL, and the schedules and agreements are rows the
+			// platform acts on — the sweep mails one at three in the morning,
+			// the consolidated run checks the other before reading another
+			// organisation's data.
+			reports.New(p, installedApps(), reportEngine(), reportSchedules(), reportGrants())
 		},
 
 		// Every organisation gets the staff directory without asking. It was
