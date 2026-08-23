@@ -1,0 +1,126 @@
+# What has to be true before this repository's main moves.
+#
+# The core has its own CI; this one is about the half that lives here — the
+# modules, the schema they carry, and the image that ships them. Until it
+# existed the answer to "does this build anywhere but one laptop?" was nobody
+# knows, and the answer turned out to be no: go.mod carried an absolute
+# `replace` into a working copy for as long as there was nothing to catch it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          # The toolchain comes from go.mod, so it cannot drift from what the
+          # code is written against.
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # The core's pinned version. Two versions across one ecosystem is two
+          # sets of findings and an argument about which is real.
+          version: v2.1.6
+          # The published binaries are built with an older Go than this module
+          # targets and refuse to analyse it; building from source keeps the
+          # two in step.
+          install-mode: goinstall
+          skip-cache: true
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # The modules hold part of what they promise in SQL — the status guard that
+    # keeps a decided document from being signed twice, the unique constraint
+    # that keeps one citizen from counting as two approvals — so their tests
+    # need a real schema. Without one they self-skip, and the guard step below
+    # is there because a skip reads exactly like a pass.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: client_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
+      DOCUMENTS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go vet
+        run: go vet ./...
+      # The platform's schema, from the core version go.mod pins rather than
+      # from a copy kept here — the same rule the image follows. It is not in
+      # this repository at all, so the directory is read back from the module
+      # cache instead of guessed.
+      - name: Migrate the platform schema
+        run: |
+          core=$(go list -m -f '{{.Dir}}' github.com/gerege-systems/open-gerege-nexus/backend)
+          MIGRATIONS_DIR="$core/db/migrations" go tool migrate up
+      # Each module's own tables, applied the way the platform applies them at
+      # install time: one goose history per module, named after the last segment
+      # of its app id. A module with no migrations directory is the ordinary
+      # case and is skipped, not an error.
+      - name: Migrate each module's schema
+        run: |
+          for dir in modules/*/migrations; do
+            [ -d "$dir" ] || continue
+            module=$(basename "$(dirname "$dir")")
+            echo "::group::$module"
+            MIGRATIONS_DIR="$dir" MIGRATIONS_TABLE="goose_db_version_$module" go tool migrate up
+            echo "::endgroup::"
+          done
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v ./... 2>&1 | tee /tmp/test.log
+      # Written against the whole suite rather than against a named package on
+      # purpose. A guard that names one belongs to that package and rots the day
+      # it moves: the core carried a step for an app that had already left, and
+      # `go test` over no packages is a pass, so the step written to stop a
+      # silent skip had become one.
+      - name: Fail if any test skipped
+        run: |
+          if grep -q -- '--- SKIP' /tmp/test.log; then
+            grep -- '--- SKIP' /tmp/test.log
+            echo "::error::a test skipped — the database this job provides is not reaching it"
+            exit 1
+          fi
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    # The deployable artefact, built exactly as deploy.sh builds it. This is the
+    # job that would have caught an absolute `replace` in go.mod, and the one
+    # that catches a catalogue merge that drops one of this repository's apps —
+    # the Dockerfile fails the build rather than letting an instance start with
+    # a binary carrying an app its catalogue does not name.
+    steps:
+      - uses: actions/checkout@v7
+      - name: docker build
+        run: docker build -t client-nexus:ci -f deploy/Dockerfile .
