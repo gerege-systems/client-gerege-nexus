@@ -14,7 +14,7 @@
       "name": "Gerege Systems Development Team"
     }
   ],
-  "repository": "https://github.com/gerege-systems/open-gerege-nexus",
+  "repository": "https://github.com/gerege-systems/client-gerege-nexus",
   "homepage": "https://nexus.gerege.mn",
   "license": "Apache-2.0",
   "dependencies": [],

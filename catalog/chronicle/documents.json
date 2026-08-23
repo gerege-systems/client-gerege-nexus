@@ -1,0 +1,33 @@
+{
+  "app_id": "io.gerege.nexus.documents",
+  "entries": [
+    {
+      "version": "2.0.0",
+      "released_at": "2026-08-15",
+      "kind": "feature",
+      "summary": {
+        "mn": "PDF гарын үсгийн апп энэ аппын дотор орж, хоёр карт нэг болов.",
+        "en": "The PDF E-Sign app moved inside this one: two cards became one."
+      },
+      "details": {
+        "mn": "Хоёр апп нэг л асуултад хариулж байсан — миний баримт хаана байна, хэн гарын үсэг зурсан бэ. Гарын үсэг гэдэг нь өөрөө хүн худалдаж авдаг бүтээгдэхүүн биш: ямар нэг зүйл баталгаажих ёстой болохоор хэрэгтэй болдог. Тиймээс PDF-ийн хоёр суваг (eID, HSM), лог, багц баталгаажуулалт, тамганы байрлал, HSM холболт бүгд энэ аппын цэсэн дор орлоо. Эрхийн код нэг болов: esign.read/sign/manage → documents.read/sign/manage, нэгээс нэг харгалзаатай тул одоо байгаа бүх олголт 00058 миграцаар шилжсэн. API-ийн зам (/api/v1/esign) хэвээр — зам гэдэг бол бичигдчихсэн клиент бүртэй хийсэн гэрээ. Дэлгэцийн хаяг /esign нь /module/documents/pdf руу шилжинэ.",
+        "en": "The two apps answered one question — where are my documents and who has signed them. Nobody adopts a signature on its own; they adopt it because something has to be signed. So both PDF rails (eID and HSM), the signature log, batch signing, stamp placement and the HSM connection now hang off this app's menu. The permissions became one set: esign.read/sign/manage → documents.read/sign/manage, one to one, so migration 00058 carried every existing grant across. The API keeps its own prefix (/api/v1/esign) because a path is a contract with every client already written against it; the screen at /esign redirects to /module/documents/pdf."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "released_at": "2026-08-05",
+      "kind": "feature",
+      "summary": {
+        "mn": "Албан бичиг, загвар, батлах гинж, хадгалалтын бодлого.",
+        "en": "Official documents, templates, approval chains and retention policy."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    }
+  ]
+}

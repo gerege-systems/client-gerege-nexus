@@ -40,5 +40,89 @@
         "category": "Plataforma"
       }
     }
+  },
+  {
+    "id": "io.gerege.nexus.organisation",
+    "slug": "organisation",
+    "name": "Organisation",
+    "description": "The organisation itself: its legal identity, its departments, and the people who work in it.",
+    "icon_url": "/icons/organisation.png",
+    "category": "Platform",
+    "visibility": "public",
+    "version": "3.0.0",
+    "translations": {
+      "mn": {
+        "name": "Байгууллага",
+        "description": "Байгууллагын хуулийн мэдээлэл, хэлтэс нэгж, ажилтнуудын бүртгэл.",
+        "category": "Платформ"
+      },
+      "ar": {
+        "name": "المؤسسة",
+        "description": "الهوية القانونية للمؤسسة وأقسامها والعاملون فيها.",
+        "category": "المنصة"
+      },
+      "zh": {
+        "name": "组织",
+        "description": "组织的法律信息、部门结构与人员名录。",
+        "category": "平台"
+      },
+      "fr": {
+        "name": "Organisation",
+        "description": "L'identité légale de l'organisation, ses départements et les personnes qui y travaillent.",
+        "category": "Plateforme"
+      },
+      "ru": {
+        "name": "Организация",
+        "description": "Юридические данные организации, её подразделения и сотрудники.",
+        "category": "Платформа"
+      },
+      "es": {
+        "name": "Organización",
+        "description": "La identidad legal de la organización, sus departamentos y las personas que trabajan en ella.",
+        "category": "Plataforma"
+      }
+    }
+  },
+  {
+    "id": "io.gerege.nexus.documents",
+    "slug": "documents",
+    "name": "Documents",
+    "description": "One register for what an organisation writes down and what it signs: templates, approval chains, retention, and PDF signing over the eID and HSM rails.",
+    "icon_url": "/icons/documents.png",
+    "category": "Productivity",
+    "visibility": "public",
+    "version": "2.0.0",
+    "translations": {
+      "mn": {
+        "name": "Баримт бичиг",
+        "description": "Байгууллагын баримтын бүртгэл, загвар, батламжийн урсгал, хадгалалт — PDF болон бүртгэлийн тоон гарын үсэг eID, ДАН, HSM гурван сувгаар.",
+        "category": "Бүтээмж"
+      },
+      "ar": {
+        "name": "المستندات",
+        "description": "سجل واحد لما تكتبه المؤسسة وما توقّعه: القوالب وسلاسل الموافقة والاحتفاظ وتوقيع PDF عبر مساري eID و HSM.",
+        "category": "الإنتاجية"
+      },
+      "zh": {
+        "name": "文档",
+        "description": "一个登记册，涵盖组织所记录与所签署的一切：模板、审批链、保留策略，以及通过 eID 与 HSM 通道的 PDF 签名。",
+        "category": "生产力"
+      },
+      "fr": {
+        "name": "Documents",
+        "description": "Un seul registre pour ce qu'une organisation consigne et ce qu'elle signe : modèles, circuits d'approbation, conservation et signature PDF via les canaux eID et HSM.",
+        "category": "Productivité"
+      },
+      "ru": {
+        "name": "Документы",
+        "description": "Единый реестр того, что организация фиксирует и подписывает: шаблоны, цепочки согласования, хранение и подпись PDF по каналам eID и HSM.",
+        "category": "Продуктивность"
+      },
+      "es": {
+        "name": "Documentos",
+        "description": "Un único registro de lo que una organización deja por escrito y de lo que firma: plantillas, cadenas de aprobación, conservación y firma de PDF por los canales eID y HSM.",
+        "category": "Productividad"
+      }
+    }
   }
 ]
