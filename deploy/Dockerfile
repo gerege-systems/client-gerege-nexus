@@ -1,14 +1,15 @@
 # Gerege Client's own image.
 #
-# Two binaries: this product's server — the platform plus its modules, of which
-# there are none yet — and the platform's migration runner, built from the exact
-# core version go.mod pins. The migrations and the catalogue come from that same
-# version, so the schema an image applies and the apps it offers are the ones
-# the code in it was written against.
+# Two binaries: this product's server — the platform plus the modules this
+# repository carries — and the platform's migration runner, built from the exact
+# core version go.mod pins. The platform's migrations and half of the catalogue
+# come from that same version, so the schema an image applies and the apps it
+# offers are the ones the code in it was written against. A module's own
+# migrations do not: they travel inside the module, through nexus.Migrations.
 
 FROM golang:1.26-alpine AS build
 
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates jq
 
 WORKDIR /src
 
@@ -42,23 +43,44 @@ RUN core=$(go list -m -f '{{.Dir}}' github.com/gerege-systems/open-gerege-nexus/
     && mkdir -p /out/db && cp -r "$core/db/migrations" /out/db/migrations \
     && chmod -R u+w /out/db
 
-# The catalogue, fetched at the same pinned version rather than copied into this
-# repository.
+# The catalogue: the core's, merged with this repository's own.
 #
-# It cannot come out of the module cache like the migrations do: the Go module
-# is rooted at the core's `backend/` and `catalog/` sits beside it, outside the
-# module. So it comes from the tag `go list` just reported — the alternative is
-# nine JSON files committed here that go stale the day the core is bumped, which
-# is exactly the copying §5 rule 2 forbids.
+# The core's half cannot come out of the module cache like the migrations do:
+# the Go module is rooted at the core's `backend/` and `catalog/` sits beside
+# it, outside the module. So it comes from the tag `go list` just reported —
+# the alternative is committing the platform's entries here, where they go
+# stale the day the core is bumped, which is the copying §5 rule 2 forbids.
 #
-# Every entry in it is a platform app. The day this repository compiles a module
-# of its own, that app is added to a catalogue of ours and this step becomes a
-# merge instead of a copy.
+# The merge is the day this file predicted: this repository compiles modules of
+# its own now, and their entries live in `catalog/`. A copy would drop them,
+# and an instance whose binary carries an app its catalogue does not name
+# refuses to start — `Options.DefaultApps` is checked against the catalogue
+# while the server is built.
+#
+# A module with no manifest or no chronicle of its own is allowed — the
+# directories are copied only when they exist, and a copy that then fails
+# still fails the build rather than shipping a catalogue missing an entry.
+#
+# Ours first, so a duplicate id resolves to this repository's entry: jq's sort
+# is stable and `unique_by` keeps the first of each group. That matters while a
+# module is mid-move — the app is in both catalogues for exactly as long as it
+# takes the core to drop it, and during that window the entry that describes
+# the code in this image is ours.
 RUN core=$(go list -m -f '{{.Version}}' github.com/gerege-systems/open-gerege-nexus/backend) \
     && wget -qO- "https://github.com/gerege-systems/open-gerege-nexus/archive/refs/tags/backend/${core}.tar.gz" \
     | tar -xz -C /tmp \
     && cp -r /tmp/open-gerege-nexus-*/catalog /out/catalog \
-    && test -f /out/catalog/apps.json
+    && if [ -d catalog/manifests ]; then mkdir -p /out/catalog/manifests \
+       && cp -f catalog/manifests/*.json /out/catalog/manifests/; fi \
+    && if [ -d catalog/chronicle ]; then mkdir -p /out/catalog/chronicle \
+       && cp -f catalog/chronicle/*.json /out/catalog/chronicle/; fi \
+    && jq -s 'add | unique_by(.id)' catalog/apps.json /tmp/open-gerege-nexus-*/catalog/apps.json \
+       > /out/catalog/apps.json \
+    && test -f /out/catalog/apps.json \
+    && for id in $(jq -r '.[].id' catalog/apps.json); do \
+         jq -e --arg id "$id" 'map(select(.id == $id)) | length == 1' /out/catalog/apps.json \
+         > /dev/null || { echo "catalogue merge lost $id"; exit 1; }; \
+       done
 
 FROM alpine:3.22
 
