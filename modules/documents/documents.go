@@ -312,6 +312,12 @@ func (m *DocumentsModule) Permissions() []nexus.PermissionDefinition {
 			Description:  "Apply an eID / DAN / HSM digital signature or reject a document",
 			DefaultRoles: []string{nexus.DefaultRoleManager, nexus.DefaultRoleUser},
 		},
+		{Code: "documents.parties", Name: "Name contract parties",
+			Description:  "Add, correct and remove the parties of a contract, and nominate this organisation's signatories",
+			DefaultRoles: []string{nexus.DefaultRoleManager}},
+		{Code: "documents.send", Name: "Send contracts",
+			Description:  "Dispatch a contract to another person or organisation, resend, withdraw and reopen",
+			DefaultRoles: []string{nexus.DefaultRoleManager}},
 	}
 }
 
@@ -381,6 +387,18 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 		// JSON маршрутууд. 64 КБ нь эдгээрт зөв тоо — тайлбарыг `bodyLimit`
 		// дээр үз — бөгөөд тэднийг нэг дор барих нь хэн нэгэн шинэ маршрут
 		// нэмээд хязгаарыг мартах боломжийг хаана.
+		// Гэрээний талууд. Биеийн хязгаар нь JSON-ынхтой ижил — тал бол
+		// хэдэн талбар, PDF биш.
+		dr.Group(func(pr chi.Router) {
+			pr.Use(limitBody)
+			parties := nexus.RequirePermission(m.perms, "documents.parties")
+			pr.With(read).Get("/{id}/parties", m.listPartiesHandler)
+			pr.With(parties).Post("/{id}/parties", m.addPartyHandler)
+			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
+			pr.With(parties).Post("/{id}/parties/{pid}/signatories", m.addSignatoryHandler)
+			pr.With(parties).Delete("/{id}/parties/{pid}/signatories/{sid}", m.removeSignatoryHandler)
+		})
+
 		dr.Group(func(jr chi.Router) {
 			jr.Use(limitBody)
 
