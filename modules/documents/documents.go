@@ -336,85 +336,114 @@ const bodyLimit = 64 << 10 // 64 KB, sixteen times the largest real request
 // limitBody refuses an over-large request before it is read, and caps what a
 // chunked one can stream. It sits on the module's whole route group so no handler
 // can forget it.
-func limitBody(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.ContentLength > bodyLimit {
-			nexus.Error(w, http.StatusRequestEntityTooLarge,
-				fmt.Sprintf("the request body is larger than %d bytes", bodyLimit))
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		next.ServeHTTP(w, r)
-	})
+//
+// Хязгаар нь ЯГ ТЭР МАРШРУТЫНХ байх ёстой, бүлгийнх биш.
+//
+// Урьд нь энэ нь бүлэг дээр 64 КБ-аар суудаг байв. JSON хүсэлтэд зөв тоо;
+// PDF хүлээж авдаг `POST /{id}/file`-д харин үхлийн: тэр handler өөрийн 34 МБ
+// уншигчийг тавьдаг ч түүнд хэзээ ч хүрдэггүй байсан. Бүлгийн middleware
+// `ContentLength` дээр аль хэдийн 413 буцаах ба `r.Body`-г 64 КБ-аар ороосон
+// байна; `MaxBytesReader`-ийг дахин ороовол ДОТООД хязгаар хүчинтэй.
+//
+// Үр дүн нь: 64 КБ-аас том PDF-ийг баримтад хавсаргах боломжгүй байсан —
+// гэрээ байгуулах гол зам дээр. Тиймээс хязгаарыг маршрутын шинж чанар
+// болгов: JSON бүлэг 64 КБ-аа хадгална, файлын маршрут өөрийнхөө хэмжээг авна.
+func limitBodyTo(max int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > max {
+				nexus.Error(w, http.StatusRequestEntityTooLarge,
+					fmt.Sprintf("the request body is larger than %d bytes", max))
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, max)
+			next.ServeHTTP(w, r)
+		})
+	}
 }
+
+// limitBody нь JSON маршрутуудын анхдагч хязгаар.
+func limitBody(next http.Handler) http.Handler { return limitBodyTo(bodyLimit)(next) }
 
 func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Handler) http.Handler) {
 	r.Route("/api/v1/documents", func(dr chi.Router) {
 		dr.Use(tenantAuthMiddleware)
-		dr.Use(limitBody)
 		read := nexus.RequirePermission(m.perms, "documents.read")
 		manage := nexus.RequirePermission(m.perms, "documents.manage")
 		sign := nexus.RequirePermission(m.perms, "documents.sign")
-		dr.With(read).Get("/", m.listDocumentsHandler)
-		dr.With(manage).Post("/", m.createDocumentHandler)
+		// Файл нь JSON биш тул хязгаар нь ч өөр. Энэ маршрут JSON бүлгээс
+		// ГАДУУР бөгөөд өөрийн хэмжээг авна: chi-д `Use` нь бүлгийн бүх
+		// маршрутад үйлчилдэг ба `With` түүнийг дарж бичдэггүй, зөвхөн ард нь
+		// нэмдэг — тиймээс нэг бүлэгт хоёр хэмжээ байрлуулах ганц зам нь
+		// тэднийг салгах явдал.
+		dr.With(manage, limitBodyTo(maxAttachmentBody)).Post("/{id}/file", m.attachFileHandler)
 
-		// Templates a document is started from.
-		dr.With(read).Get("/templates", m.listTemplatesHandler)
-		dr.With(manage).Post("/templates", m.createTemplateHandler)
-		dr.With(manage).Put("/templates/{id}", m.updateTemplateHandler)
-		dr.With(manage).Delete("/templates/{id}", m.deleteTemplateHandler)
-		dr.With(manage).Post("/templates/{id}/use", m.useTemplateHandler)
+		// JSON маршрутууд. 64 КБ нь эдгээрт зөв тоо — тайлбарыг `bodyLimit`
+		// дээр үз — бөгөөд тэднийг нэг дор барих нь хэн нэгэн шинэ маршрут
+		// нэмээд хязгаарыг мартах боломжийг хаана.
+		dr.Group(func(jr chi.Router) {
+			jr.Use(limitBody)
 
-		// How a document type may be signed.
-		dr.With(read).Get("/policies", m.listSignaturePoliciesHandler)
-		dr.With(manage).Put("/policies/{docType}", m.saveSignaturePolicyHandler)
+			jr.With(read).Get("/", m.listDocumentsHandler)
+			jr.With(manage).Post("/", m.createDocumentHandler)
 
-		// Who must sign it, in order.
-		dr.With(read).Get("/workflows", m.listWorkflowsHandler)
-		dr.With(manage).Put("/workflows/{docType}", m.saveWorkflowHandler)
+			// Templates a document is started from.
+			jr.With(read).Get("/templates", m.listTemplatesHandler)
+			jr.With(manage).Post("/templates", m.createTemplateHandler)
+			jr.With(manage).Put("/templates/{id}", m.updateTemplateHandler)
+			jr.With(manage).Delete("/templates/{id}", m.deleteTemplateHandler)
+			jr.With(manage).Post("/templates/{id}/use", m.useTemplateHandler)
 
-		// How long it is kept.
-		dr.With(read).Get("/retention", m.listRetentionRulesHandler)
-		dr.With(manage).Put("/retention/{docType}", m.saveRetentionRuleHandler)
+			// How a document type may be signed.
+			jr.With(read).Get("/policies", m.listSignaturePoliciesHandler)
+			jr.With(manage).Put("/policies/{docType}", m.saveSignaturePolicyHandler)
 
-		// A single document. Static segments above win over {id} in chi's trie,
-		// so "templates" and "policies" are never read as document ids.
-		dr.With(read).Get("/{id}/signatures", m.listSignaturesHandler)
-		// Which channels may sign this one, here. A read: it says what the
-		// screen may offer, not what anybody may do.
-		dr.With(read).Get("/{id}/signing-rails", m.signingRailsHandler)
+			// Who must sign it, in order.
+			jr.With(read).Get("/workflows", m.listWorkflowsHandler)
+			jr.With(manage).Put("/workflows/{docType}", m.saveWorkflowHandler)
 
-		// What the document is about. Attaching is documents.manage — it is
-		// preparing a document rather than signing one — and it is refused
-		// once anything has been signed (ADR 0003).
-		dr.With(manage).Post("/{id}/file", m.attachFileHandler)
-		dr.With(read).Get("/{id}/file", m.downloadFileHandler)
-		dr.With(read).Get("/{id}/steps", m.listDocumentStepsHandler)
-		// Correcting a title is authoring, not approving, so it is checked against
-		// documents.manage like the rest of this group — the path carries no /sign.
-		dr.With(manage).Put("/{id}/title", m.renameDocumentHandler)
-		dr.With(manage).Post("/{id}/route", m.routeDocumentHandler)
-		dr.With(sign).Post("/{id}/reject", m.rejectDocumentHandler)
+			// How long it is kept.
+			jr.With(read).Get("/retention", m.listRetentionRulesHandler)
+			jr.With(manage).Put("/retention/{docType}", m.saveRetentionRuleHandler)
 
-		// Signing is per channel, because the channels are not the same shape.
-		// E-ID is an approval the citizen gives on their own device, so it takes
-		// two calls; DAN is a code they read out, so it takes one.
-		//
-		// The start is budgeted: it is the one that reaches a citizen's phone. The poll
-		// is not — a citizen takes as long as they take to find it, and throttling the
-		// watching would only lose approvals. DAN is a code the citizen reads out, so it
-		// pushes nothing, but it is budgeted with the same bucket because it is still an
-		// authentication attempt against a real person's credentials.
-		//
-		// One budget, shared by both routes: they are two ways to make the same
-		// demand on the same person. nexus.RateLimit returns pass-through
-		// middleware on a deployment that provides no limiter — a module built
-		// by hand in a test still routes, which is what the nil check here used
-		// to be for.
-		budget := nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)
-		dr.With(sign, budget).Post("/{id}/sign/eid/start", m.startEIDSignatureHandler)
-		dr.With(sign, budget).Post("/{id}/sign/dan", m.signWithDANHandler)
-		dr.With(sign).Post("/{id}/sign/eid/poll", m.pollEIDSignatureHandler)
+			// A single document. Static segments above win over {id} in chi's trie,
+			// so "templates" and "policies" are never read as document ids.
+			jr.With(read).Get("/{id}/signatures", m.listSignaturesHandler)
+			// Which channels may sign this one, here. A read: it says what the
+			// screen may offer, not what anybody may do.
+			jr.With(read).Get("/{id}/signing-rails", m.signingRailsHandler)
+
+			// What the document is about. Attaching is documents.manage — it is
+			// preparing a document rather than signing one — and it is refused
+			// once anything has been signed (ADR 0003).
+			jr.With(read).Get("/{id}/file", m.downloadFileHandler)
+			jr.With(read).Get("/{id}/steps", m.listDocumentStepsHandler)
+			// Correcting a title is authoring, not approving, so it is checked against
+			// documents.manage like the rest of this group — the path carries no /sign.
+			jr.With(manage).Put("/{id}/title", m.renameDocumentHandler)
+			jr.With(manage).Post("/{id}/route", m.routeDocumentHandler)
+			jr.With(sign).Post("/{id}/reject", m.rejectDocumentHandler)
+
+			// Signing is per channel, because the channels are not the same shape.
+			// E-ID is an approval the citizen gives on their own device, so it takes
+			// two calls; DAN is a code they read out, so it takes one.
+			//
+			// The start is budgeted: it is the one that reaches a citizen's phone. The poll
+			// is not — a citizen takes as long as they take to find it, and throttling the
+			// watching would only lose approvals. DAN is a code the citizen reads out, so it
+			// pushes nothing, but it is budgeted with the same bucket because it is still an
+			// authentication attempt against a real person's credentials.
+			//
+			// One budget, shared by both routes: they are two ways to make the same
+			// demand on the same person. nexus.RateLimit returns pass-through
+			// middleware on a deployment that provides no limiter — a module built
+			// by hand in a test still routes, which is what the nil check here used
+			// to be for.
+			budget := nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)
+			jr.With(sign, budget).Post("/{id}/sign/eid/start", m.startEIDSignatureHandler)
+			jr.With(sign, budget).Post("/{id}/sign/dan", m.signWithDANHandler)
+			jr.With(sign).Post("/{id}/sign/eid/poll", m.pollEIDSignatureHandler)
+		})
 	})
 
 	// The PDF rails, mounted by the app that now owns them.
@@ -723,6 +752,10 @@ type verifiedSignature struct {
 	// there was nothing to cover. See ADR 0003.
 	Format        domain.Format
 	CoveredDigest string
+	// SignedPDF нь PAdES ёслолоос буцаж ирсэн, гарын үсэг шигтгэсэн баримт.
+	// Түүнийг ЭНД авч явах нь дараалал: файл нь гарын үсгийн гүйлгээ дотор,
+	// эрхийн шалгалт өнгөрсний дараа л хадгалагдана. Detached ёслолд хоосон.
+	SignedPDF []byte
 }
 
 // signaturePreflight is what the document's own configuration decides before a
@@ -1045,6 +1078,27 @@ func (m *DocumentsModule) writeSignature(ctx context.Context, tenantID, docID, m
 	}
 	if err := checkSigner(position, docType, signature.RegNumber, policy.RequireNamedSigner); err != nil {
 		return nil, err
+	}
+
+	// Гарын үсэгтэй PDF нь ЭНД, эрхийн шалгалтын ДАРАА, энэ гүйлгээний дотор
+	// хадгалагдана.
+	//
+	// Урьд нь тэр нь рельсээс ирмэгц шууд бичигддэг байв — өөрөөр хэлбэл
+	// `checkSigner`-ээс ӨМНӨ. Дараалал нь эрхийн шугам: дарааллын нэрлээгүй
+	// хүн PIN2-оороо зөвшөөрөхөд гарын үсэг нь татгалзагдсан ч түүний
+	// гарын үсэг агуулсан PDF нь `document_files.signed_content`-д үлдэж,
+	// `pdfToSign` дараагийн хүнд ЯГ ТЭР файлыг өгдөг байсан. Тэгэхээр
+	// эрхгүй хүний гарын үсэг баримтад суусаар үлдэнэ.
+	//
+	// Гүйлгээ дотор байх нь мөн адил чухал: гарын үсэг бичигдээгүй бол файл
+	// ч өөрчлөгдөхгүй, хоёулаа хамт эргэнэ.
+	if len(signature.SignedPDF) > 0 {
+		if _, err := tx.Exec(ctx,
+			`UPDATE document_files SET signed_content = $3, signed_at = NOW()
+			  WHERE document_id = $1 AND tenant_id = $2`,
+			docID, tenantID, signature.SignedPDF); err != nil {
+			return nil, fmt.Errorf("store the signed document: %w", err)
+		}
 	}
 
 	// The signature fills the step it was checked against — not "the next number",

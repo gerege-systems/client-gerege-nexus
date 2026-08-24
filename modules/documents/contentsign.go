@@ -48,6 +48,17 @@ func (m *DocumentsModule) startContentSignature(ctx context.Context, tenantID, d
 
 	var started nexus.SignatureSession
 	var err error
+
+	// Яг ЯМАР байт рельс рүү явсныг барина.
+	//
+	// `artifact.SHA256` нь ЭХ хувийн хеш — `fileOf` тэр талаар тодорхой:
+	// «the signed copy has bytes added to it by design, and its digest is not
+	// the one recorded». Харин PAdES-д хоёр дахь гарын үсэг зурагч нэгэнт
+	// гарын үсэгтэй болсон PDF-ийг зурдаг (`pdfToSign`). Тиймээс эх хувийн
+	// хешийг бүртгэвэл 2 дахь гарын үсгээс эхлээд бүртгэл нь ТЭР ГАРЫН ҮСЭГ
+	// ХАМРААГҮЙ байтыг нэрлэнэ — маргаан яг энэ талбар дээр тулдаг.
+	sentDigest := artifact.SHA256
+
 	if format == domain.FormatPAdES {
 		// The PDF travels, not a digest of it: the rail puts the signature
 		// inside the document, which it can only do with the document. What
@@ -58,6 +69,7 @@ func (m *DocumentsModule) startContentSignature(ctx context.Context, tenantID, d
 		if err != nil {
 			return nil, err
 		}
+		sentDigest = domain.Digest(pdf)
 		started, err = m.signer.SignDocument(ctx, nexus.DocumentSignatureRequest{
 			RegNumber:   regNumber,
 			FileName:    artifact.FileName,
@@ -68,7 +80,10 @@ func (m *DocumentsModule) startContentSignature(ctx context.Context, tenantID, d
 			// A rail that cannot sign PDFs can still sign the digest of one,
 			// and refusing the citizen over a format would be refusing them a
 			// signature this installation can actually give.
+			// Буцаж эх хувийн хеш рүү: detached ёслол нь `artifact`-ийн хешийг
+			// илгээдэг тул бүртгэх зүйл ч мөн тэр.
 			format = domain.FormatDetached
+			sentDigest = artifact.SHA256
 			started, err = m.signer.SignDigest(ctx, digestRequest(regNumber, artifact, displayText))
 		}
 		if err != nil {
@@ -88,7 +103,7 @@ func (m *DocumentsModule) startContentSignature(ctx context.Context, tenantID, d
 		"display_text":      displayText,
 		"session_id":        started.SessionID,
 		"format":            string(format),
-		"digest":            artifact.SHA256,
+		"digest":            sentDigest,
 	})
 
 	// The citizen's device is showing the request by now, so the pairing that
@@ -99,7 +114,7 @@ func (m *DocumentsModule) startContentSignature(ctx context.Context, tenantID, d
 		    (session_id, tenant_id, document_id, reg_number, display_text, requested_digest, format)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		started.SessionID, tenantID, docID, regNumber, displayText,
-		artifact.SHA256, string(format)); err != nil {
+		sentDigest, string(format)); err != nil {
 		return nil, fmt.Errorf("record signing session: %w", err)
 	}
 
@@ -138,6 +153,7 @@ func (m *DocumentsModule) pollContentSignature(ctx context.Context, tenantID, do
 	// artifact: what comes back is what a verifier will read, and it is stored
 	// beside the original rather than over it — the original is what says which
 	// bytes were signed.
+	var signedPDF []byte
 	if domain.Format(session.Format) == domain.FormatPAdES {
 		signed, err := m.signer.SignedDocument(ctx, session.RegNumber, sessionID)
 		if err != nil {
@@ -148,9 +164,9 @@ func (m *DocumentsModule) pollContentSignature(ctx context.Context, tenantID, do
 			return nil, fmt.Errorf("%w: the rail reported a signature and returned no document",
 				ErrProviderUnavailable)
 		}
-		if err := m.keepSignedPDF(ctx, tenantID, docID, signed.PDF); err != nil {
-			return nil, err
-		}
+		// ХАДГАЛАХГҮЙ, зөвхөн барина: эрхийн шалгалт доор бөгөөд түүнээс өмнө
+		// бичвэл татгалзагдсан гарын үсэг баримтад суусаар үлдэнэ.
+		signedPDF = signed.PDF
 	} else {
 		// The half that makes a digest ceremony a signature rather than a
 		// session id. A rail that answers with a different digest signed
@@ -186,6 +202,7 @@ func (m *DocumentsModule) pollContentSignature(ctx context.Context, tenantID, do
 		Hash:          "eid_session_" + sessionID,
 		Format:        domain.Format(session.Format),
 		CoveredDigest: session.RequestedDigest,
+		SignedPDF:     signedPDF,
 	}, sessionID)
 	if err != nil {
 		return nil, err
@@ -300,18 +317,4 @@ func (m *DocumentsModule) pdfToSign(ctx context.Context, tenantID, docID string)
 		return signed, nil
 	}
 	return original, nil
-}
-
-// keepSignedPDF stores the signed copy beside the original.
-//
-// Beside, never over: the original is what the ledger's covered digest names,
-// and a store that replaced it would leave every recorded signature pointing at
-// bytes that are no longer there.
-func (m *DocumentsModule) keepSignedPDF(ctx context.Context, tenantID, docID string, pdf []byte) error {
-	if _, err := m.db.Exec(ctx,
-		`UPDATE document_files SET signed_content = $3, signed_at = NOW()
-		  WHERE document_id = $1 AND tenant_id = $2`, docID, tenantID, pdf); err != nil {
-		return fmt.Errorf("store the signed document: %w", err)
-	}
-	return nil
 }
