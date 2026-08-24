@@ -397,6 +397,17 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
 			pr.With(parties).Post("/{id}/parties/{pid}/signatories", m.addSignatoryHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}/signatories/{sid}", m.removeSignatoryHandler)
+
+			// Гэрээний бичвэр. 64 КБ-аас том байж болно — монгол гэрээ кирилл
+			// тул тэмдэгт тутам хоёр байт — тиймээс өөрийн хязгаартай.
+			pr.With(read).Get("/{id}/body", m.getBodyHandler)
+			pr.With(manage, limitBodyTo(1<<20)).Put("/{id}/body", m.saveBodyHandler)
+
+			// Илгээх: тал бүрийн PDF энд зурагдаж ХӨЛДӨНӨ.
+			send := nexus.RequirePermission(m.perms, "documents.send")
+			pr.With(send).Post("/{id}/send", m.sendHandler)
+			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
+			pr.With(read).Get("/{id}/parties/{pid}/signed.pdf", m.partySignedCopyHandler)
 		})
 
 		dr.Group(func(jr chi.Router) {
