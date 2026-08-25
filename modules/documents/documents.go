@@ -328,6 +328,12 @@ func (m *DocumentsModule) Permissions() []nexus.PermissionDefinition {
 func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 	return []nexus.MenuDefinition{
 		{ID: "documents", ParentID: "operations", Label: "Documents", Path: "/documents", Icon: "file-text", Order: 30, Labels: map[string]string{"mn": "Баримт бичиг", "ar": "المستندات", "zh": "文档", "fr": "Documents", "ru": "Документы", "es": "Documentos"}},
+		// Гэрээ ба ирсэн гэрээ нь МОДУЛИЙН үйлчилдэг хуудас (ui.go): бүрхүүл
+		// нь модулийн дэлгэцийг ерөнхийлөн зурдаггүй ба гэрээний дэлгэц тэнд
+		// байхгүй. `ExternalURL` нь бүрхүүлд «энэ бол миний биш хуудас» гэж
+		// хэлэх ганц зам — `Path` бол бүрхүүлийн өөрийн маршрут.
+		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", ExternalURL: "/contracts/", Icon: "file-signature", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
+		{ID: "documents.inbox", ParentID: "operations", Label: "Incoming contracts", ExternalURL: "/contracts/#/inbox", Icon: "inbox", Order: 32, Labels: map[string]string{"mn": "Ирсэн гэрээ", "ar": "العقود الواردة", "zh": "收到的合同", "fr": "Contrats reçus", "ru": "Входящие договоры", "es": "Contratos recibidos"}},
 	}
 }
 
@@ -376,6 +382,9 @@ func limitBodyTo(max int64) func(http.Handler) http.Handler {
 func limitBody(next http.Handler) http.Handler { return limitBodyTo(bodyLimit)(next) }
 
 func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Handler) http.Handler) {
+	// Гэрээний дэлгэцүүд — ui.go-г үз.
+	m.registerUI(r)
+
 	// ─────────────────────────────────────────── ДАНСГҮЙ ХҮНИЙ ХААЛГА
 	//
 	// Нэвтрэлтгүй, тиймээс `/api/v1/documents` бүлгээс ГАДУУР: тэр бүлэг
@@ -417,6 +426,11 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			pr.Use(limitBody)
 			parties := nexus.RequirePermission(m.perms, "documents.parties")
 			send := nexus.RequirePermission(m.perms, "documents.send")
+			// Гэрээний жагсаалт — баримтын жагсаалтаас тусдаа, тайлбарыг
+			// contractlist.go дээр үз.
+			pr.With(read).Get("/contracts", m.listContractsHandler)
+			pr.With(manage).Put("/{id}/contract", m.saveContractFactsHandler)
+
 			pr.With(read).Get("/{id}/parties", m.listPartiesHandler)
 			pr.With(parties).Post("/{id}/parties", m.addPartyHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
