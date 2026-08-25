@@ -369,16 +369,29 @@ func (m *DocumentsModule) storePartyCopy(ctx context.Context, tenantID, docID st
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Дахин илгээх нь хуучин мөрийг УСТГААД шинээр үүсгэнэ — UPDATE биш.
+	//
+	// Энэ нь загварын сонголт биш, сангийн шаардлага: 00002-ын
+	// `documents_party_file_answer_only` trigger нь хөлдсөн байтыг ХЭНД Ч —
+	// гаргагчид ч — засуулдаггүй. Тэгж байж «талд үзүүлсэн байт нь тэдний
+	// зурах байт» гэдэг баталгаа trigger-ийн түвшинд амьдардаг. Урьд нь энд
+	// ON CONFLICT DO UPDATE байсан тул анхны илгээлт ажиллаад, ДАХИН илгээлт
+	// бүр тэр trigger-т тулж 500 болдог байв.
+	//
+	// Зөвхөн гарын үсэггүй хувийг устгана: зурагдсан хувь нь баримт, түүнийг
+	// шинэчлэх нь гарын үсгийг өөр бичвэр дээр буулгана. (Зурагдсан талыг
+	// sendHandler аль хэдийн алгасдаг — энэ болзол нь давхар хамгаалалт.)
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM document_party_files
+		  WHERE party_id = $1 AND signed_content IS NULL`, p.ID); err != nil {
+		return fmt.Errorf("clear the stale copy: %w", err)
+	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO document_party_files
 		     (party_id, tenant_id, counterparty_tenant_id, document_id,
 		      file_name, size_bytes, sha256, content, body_text)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		 ON CONFLICT (party_id) DO UPDATE
-		   SET file_name = EXCLUDED.file_name, size_bytes = EXCLUDED.size_bytes,
-		       sha256 = EXCLUDED.sha256, content = EXCLUDED.content,
-		       body_text = EXCLUDED.body_text, frozen_at = NOW()
-		 WHERE document_party_files.signed_content IS NULL`,
+		 ON CONFLICT (party_id) DO NOTHING`,
 		p.ID, tenantID, p.CounterpartyTenant, docID,
 		fileName(p.RegistrationNumber, "contract"), len(pdf), sum, pdf, text); err != nil {
 		return fmt.Errorf("freeze the party copy: %w", err)
