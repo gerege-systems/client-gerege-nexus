@@ -314,11 +314,13 @@ func (m *DocumentsModule) freezeFor(ctx context.Context, tenantID, docID string,
 	shape contractShape, issuer, p Party, body string) (string, []byte, string, error) {
 
 	f := Fields{
-		SchoolName:   p.DisplayName,
-		SchoolCode:   p.RegistrationNumber,
-		Aimag:        p.AddressLine,
-		Principal:    signatoryName(p),
-		ContractCode: shape.DocType,
+		SchoolName: p.DisplayName,
+		SchoolCode: p.RegistrationNumber,
+		Aimag:      p.AddressLine,
+		Principal:  signatoryName(p),
+		// Гэрээний ДУГААР — баримтын ТӨРӨЛ биш. Урьд нь энд DocType очдог
+		// байсан тул {{дугаар}} нь "CONTRACT" гэж орлуулагддаг байв.
+		ContractCode: shape.Number,
 		Title:        shape.Title,
 		Date:         time.Now(),
 	}
