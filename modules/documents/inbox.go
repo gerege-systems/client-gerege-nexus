@@ -486,7 +486,8 @@ func (m *DocumentsModule) inboxSignStartHandler(w http.ResponseWriter, r *http.R
 
 	s, err := m.signerFor(r.Context(), party.Owner, party.DocID, party.ID, claims.UserID)
 	switch {
-	case errors.Is(err, ErrNoSignatory), errors.Is(err, ErrNoPartyCopy):
+	case errors.Is(err, ErrNoSignatory), errors.Is(err, ErrNoPartyCopy),
+		errors.Is(err, ErrNotYourTurn):
 		nexus.Error(w, http.StatusConflict, err.Error())
 		return
 	case err != nil:

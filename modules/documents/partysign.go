@@ -59,6 +59,7 @@ type partySigner struct {
 }
 
 var (
+	ErrNotYourTurn   = errors.New("энэ гэрээ дараалалтай — өмнөх тал гарын үсгээ зураагүй байна")
 	ErrNoPartyCopy   = errors.New("энэ талд хөлдсөн хувь алга — гэрээ хараахан хүргэгдээгүй")
 	ErrBytesChanged  = errors.New("гэрээний бичвэр ёслолын явцад шинэчлэгдсэн байна — дахин уншиж, дахин зурна уу")
 	ErrNoSigningRail = errors.New("энэ суулгацад гарын үсгийн рельс алга")
@@ -73,6 +74,38 @@ var (
 func (m *DocumentsModule) signerFor(ctx context.Context, tenantID, docID, partyID, userID string) (partySigner, error) {
 	var s partySigner
 	s.TenantID, s.DocID, s.PartyID = tenantID, docID, partyID
+
+	// ДАРААЛАЛ. `joint` горимд тал бүр `sign_order` авдаг ба өмнөх нь
+	// зураагүй байхад дараагийнх нь зурах ёсгүй — «эхлээд захирал, дараа нь
+	// нягтлан» гэдэг нь зөвхөн дэлгэцийн дараалал биш, гэрээний нөхцөл.
+	//
+	// Шалгалт нь ЭНД байгаа нь санаатай: гурван зам (гаргагч, хүлээн авагч,
+	// урилгын токен) гурвуулаа энэ функцээр ёслолоо эхлүүлдэг тул дараалал
+	// нэг л газарт бичигдэнэ. Гурван газарт бичигдсэн дүрэм нь хоёр дахь
+	// газраа мартагдах дүрэм.
+	//
+	// Горимыг `document_records`-оос асуухгүй: хүлээн авагч тэр хүснэгтийг
+	// уншиж чаддаггүй. `sign_order` нь зөвхөн `joint` горимд бичигддэг тул
+	// баганын оршихуй нь өөрөө дараалалтай гэдгийн дохио.
+	var blockedBy string
+	err := m.db.QueryRow(ctx,
+		`SELECT COALESCE(string_agg(earlier.display_name, ', ' ORDER BY earlier.sign_order), '')
+		   FROM document_parties me
+		   JOIN document_parties earlier
+		     ON earlier.document_id = me.document_id
+		    AND earlier.party_role <> 'issuer'
+		    AND earlier.required
+		    AND earlier.sign_order IS NOT NULL
+		    AND earlier.sign_order < me.sign_order
+		    AND earlier.state <> 'signed'
+		  WHERE me.id = $1 AND me.document_id = $2 AND me.sign_order IS NOT NULL`,
+		partyID, docID).Scan(&blockedBy)
+	if err != nil && !isNoRows(err) {
+		return s, fmt.Errorf("read the signing order: %w", err)
+	}
+	if blockedBy != "" {
+		return s, fmt.Errorf("%w: %s", ErrNotYourTurn, blockedBy)
+	}
 
 	rows, err := m.db.Query(ctx,
 		`SELECT g.id, g.full_name, g.reg_number, COALESCE(g.user_id::text, '')
@@ -369,7 +402,8 @@ func (m *DocumentsModule) partySignStartHandler(w http.ResponseWriter, r *http.R
 	claims, _ := nexus.UserFromContext(r.Context())
 	s, err := m.signerFor(r.Context(), tenantID, docID, partyID, claims.UserID)
 	switch {
-	case errors.Is(err, ErrNoSignatory), errors.Is(err, ErrNoPartyCopy):
+	case errors.Is(err, ErrNoSignatory), errors.Is(err, ErrNoPartyCopy),
+		errors.Is(err, ErrNotYourTurn):
 		nexus.Error(w, http.StatusConflict, err.Error())
 		return
 	case err != nil:
