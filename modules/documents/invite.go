@@ -148,7 +148,7 @@ func (m *DocumentsModule) createInviteHandler(w http.ResponseWriter, r *http.Req
 		 VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7,'')::uuid, NOW() + $8::interval)
 		 RETURNING id, expires_at`,
 		tenantID, docID, partyID, hash, channel, strings.TrimSpace(req.SentTo),
-		actorFor(r.Context()), fmt.Sprintf("%d seconds", int(ttl.Seconds()))).
+		actorID(r.Context()), fmt.Sprintf("%d seconds", int(ttl.Seconds()))).
 		Scan(&id, &expires); err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "урилга бичигдсэнгүй")
 		return
@@ -157,7 +157,7 @@ func (m *DocumentsModule) createInviteHandler(w http.ResponseWriter, r *http.Req
 	if _, err := m.db.Exec(r.Context(),
 		`INSERT INTO document_party_events (tenant_id, party_id, document_id, kind, actor_user_id, detail)
 		 VALUES ($1, $2, $3, 'sent', NULLIF($4,'')::uuid, $5)`,
-		tenantID, partyID, docID, actorFor(r.Context()), channel); err != nil {
+		tenantID, partyID, docID, actorID(r.Context()), channel); err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "урилга бичигдсэнгүй")
 		return
 	}

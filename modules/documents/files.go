@@ -194,7 +194,7 @@ func (m *DocumentsModule) attachFileHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	artifact, err := m.AttachFile(r.Context(), tenantID, chi.URLParam(r, "id"),
-		nameOf(header), header.Header.Get("Content-Type"), content, actorFor(r.Context()))
+		nameOf(header), header.Header.Get("Content-Type"), content, actorID(r.Context()))
 	if err != nil {
 		writeAttachFailure(w, err)
 		return

@@ -107,7 +107,7 @@ func (m *DocumentsModule) saveBodyHandler(w http.ResponseWriter, r *http.Request
 		 VALUES ($1, $2, $3, NULLIF($4,'')::uuid)
 		 ON CONFLICT (document_id) DO UPDATE
 		   SET body = EXCLUDED.body, updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
-		docID, tenantID, req.Body, actorFor(r.Context())); err != nil {
+		docID, tenantID, req.Body, actorID(r.Context())); err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "бичвэр хадгалагдсангүй")
 		return
 	}
@@ -539,7 +539,7 @@ func (m *DocumentsModule) withdrawHandler(w http.ResponseWriter, r *http.Request
 		 SELECT $2, p.id, $1, 'withdrawn', NULLIF($3,'')::uuid, $4
 		   FROM document_parties p
 		  WHERE p.document_id = $1 AND p.tenant_id = $2 AND p.state = 'withdrawn'`,
-		docID, tenantID, actorFor(r.Context()), reason); err != nil {
+		docID, tenantID, actorID(r.Context()), reason); err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "түүх бичигдсэнгүй")
 		return
 	}

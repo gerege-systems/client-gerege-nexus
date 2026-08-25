@@ -1612,6 +1612,10 @@ func (m *DocumentsModule) scanDocument(row rowScanner) (*Document, error) {
 // actorFor names who did it in the audit log, preferring the email an
 // administrator reading the log would recognise. Calls that arrive outside a
 // request — a migration, a test — have no claims and are recorded as the system.
+// actorFor нь АУДИТЫН мөрөнд бичигдэх хүн — уншигдахуйц нэр, имэйл байж
+// болно. ЭНЭ УТГЫГ UUID БАГАНА РУУ ХЭЗЭЭ Ч БҮҮ ӨГ: имэйлийг `::uuid` рүү
+// хөрвүүлэх нь 22P02 бөгөөд бүхэл хүсэлтийг 500 болгоно. Тэр алдаа нэг удаа
+// амьдаар гарсан — саны багана руу `actorID`-г л өгнө.
 func actorFor(ctx context.Context) string {
 	claims, err := nexus.UserFromContext(ctx)
 	if err != nil {
@@ -1619,6 +1623,17 @@ func actorFor(ctx context.Context) string {
 	}
 	if claims.Email != "" {
 		return claims.Email
+	}
+	return claims.UserID
+}
+
+// actorID нь `created_by`, `uploaded_by` мэт UUID баганад бичигдэх утга.
+// Нэвтрээгүй бол хоосон — дуудагч бүр `NULLIF($n,'')::uuid`-ээр ороодог тул
+// хоосон нь NULL болно.
+func actorID(ctx context.Context) string {
+	claims, err := nexus.UserFromContext(ctx)
+	if err != nil {
+		return ""
 	}
 	return claims.UserID
 }

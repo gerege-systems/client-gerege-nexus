@@ -83,3 +83,41 @@ func readMigrations(t *testing.T) string {
 	}
 	return all.String()
 }
+
+// actorFor нь ЗӨВХӨН аудитын мөрөнд.
+//
+// Тэр функц имэйл буцаадаг бөгөөд яг нэг зорилготой: аудитын бичлэгт хүн
+// уншигдахуйц нэр тавих. UUID багана руу өгвөл `NULLIF($n,”)::uuid` нь
+// имэйлийг хөрвүүлж чадахгүй, бүхэл хүсэлт 500 болно. Энэ нь таамаг биш:
+// eduge.mn дээр анхны байрлуулалт дээр бичвэр хадгалах, файл хавсаргах,
+// урилга үүсгэх — нэвтэрсэн хүний хийдэг бараг бүх бичих үйлдэл унасан.
+// UUID хэрэгтэй газар `actorID` байна.
+func TestActorForFeedsOnlyTheAuditLog(t *testing.T) {
+	sources, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, file := range sources {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for n, line := range strings.Split(string(body), "\n") {
+			if !strings.Contains(line, "actorFor(") || strings.Contains(line, "func actorFor") {
+				continue
+			}
+			seen++
+			if !strings.Contains(line, "nexus.Audit(") {
+				t.Errorf("%s:%d: actorFor нь аудитаас гадуур хэрэглэгдэв — "+
+					"UUID багана бол actorID хэрэгтэй:\n\t%s", file, n+1, strings.TrimSpace(line))
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("actorFor-ийн хэрэглээ олдсонгүй — шалгалт хуучирсан байж магадгүй")
+	}
+}

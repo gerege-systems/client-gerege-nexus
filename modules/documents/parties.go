@@ -394,7 +394,7 @@ func (m *DocumentsModule) addPartyHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	party, err := m.insertParty(r.Context(), tenantID, docID, req, actorFor(r.Context()))
+	party, err := m.insertParty(r.Context(), tenantID, docID, req, actorID(r.Context()))
 	switch {
 	case errors.Is(err, errDuplicateParty), errors.Is(err, errDuplicateTenant),
 		errors.Is(err, errSecondIssuer):
