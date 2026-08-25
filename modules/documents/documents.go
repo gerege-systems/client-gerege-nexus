@@ -328,12 +328,14 @@ func (m *DocumentsModule) Permissions() []nexus.PermissionDefinition {
 func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 	return []nexus.MenuDefinition{
 		{ID: "documents", ParentID: "operations", Label: "Documents", Path: "/documents", Icon: "file-text", Order: 30, Labels: map[string]string{"mn": "Баримт бичиг", "ar": "المستندات", "zh": "文档", "fr": "Documents", "ru": "Документы", "es": "Documentos"}},
-		// Гэрээ ба ирсэн гэрээ нь МОДУЛИЙН үйлчилдэг хуудас (ui.go): бүрхүүл
-		// нь модулийн дэлгэцийг ерөнхийлөн зурдаггүй ба гэрээний дэлгэц тэнд
-		// байхгүй. `ExternalURL` нь бүрхүүлд «энэ бол миний биш хуудас» гэж
-		// хэлэх ганц зам — `Path` бол бүрхүүлийн өөрийн маршрут.
-		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", ExternalURL: "/contracts/", Icon: "file-signature", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
-		{ID: "documents.inbox", ParentID: "operations", Label: "Incoming contracts", ExternalURL: "/contracts/#/inbox", Icon: "inbox", Order: 32, Labels: map[string]string{"mn": "Ирсэн гэрээ", "ar": "العقود الواردة", "zh": "收到的合同", "fr": "Contrats reçus", "ru": "Входящие договоры", "es": "Contratos recibidos"}},
+		// Гэрээ бол энэ аппын ДОТООД дэлгэц: бүрхүүлийн
+		// `/module/documents/contracts` ба `/module/documents/inbox` — бусад
+		// documents дэлгэцтэй (templates, workflows…) яг нэг байранд. Урьд нь
+		// эдгээр нь backend-ийн үйлчилдэг тусдаа хуудас байсан бөгөөд
+		// `ExternalURL`-ээр нээгддэг байв: хэрэглэгч аппаас ГАРЧ өөр
+		// харагдацтай хуудсанд очдог — аппын дэлгэц апп дотроо байх ёстой.
+		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", Path: "/module/documents/contracts", Icon: "file-signature", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
+		{ID: "documents.inbox", ParentID: "operations", Label: "Incoming contracts", Path: "/module/documents/inbox", Icon: "inbox", Order: 32, Labels: map[string]string{"mn": "Ирсэн гэрээ", "ar": "العقود الواردة", "zh": "收到的合同", "fr": "Contrats reçus", "ru": "Входящие договоры", "es": "Contratos recibidos"}},
 	}
 }
 
