@@ -372,6 +372,26 @@ func limitBodyTo(max int64) func(http.Handler) http.Handler {
 func limitBody(next http.Handler) http.Handler { return limitBodyTo(bodyLimit)(next) }
 
 func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Handler) http.Handler) {
+	// ─────────────────────────────────────────── ДАНСГҮЙ ХҮНИЙ ХААЛГА
+	//
+	// Нэвтрэлтгүй, тиймээс `/api/v1/documents` бүлгээс ГАДУУР: тэр бүлэг
+	// бүхэлдээ `tenantAuthMiddleware`-ийн дор амьдардаг ба энэ маршрутуудад
+	// хандах хүн бүртгэлгүй. Хамгаалалт нь эрхийн шалгалт биш, ТОКЕН —
+	// `invite.go`-г үз. Хязгаар нь чанга: холбоос таах цорын ганц зам нь
+	// олон удаа оролдох явдал.
+	r.Route("/api/v1/contract", func(cr chi.Router) {
+		cr.Use(limitBody)
+		guess := nexus.RateLimit(30, 30)
+		cr.With(guess).Get("/{token}", m.inviteShowHandler)
+		cr.With(guess).Get("/{token}/copy", m.inviteCopyHandler)
+		cr.With(guess).Get("/{token}/signed.pdf", m.inviteSignedCopyHandler)
+		cr.With(guess).Post("/{token}/signatory", m.inviteNominateHandler)
+		cr.With(nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)).
+			Post("/{token}/sign/start", m.inviteSignStartHandler)
+		cr.With(guess).Post("/{token}/sign/poll", m.inviteSignPollHandler)
+		cr.With(guess).Post("/{token}/decline", m.inviteDeclineHandler)
+	})
+
 	r.Route("/api/v1/documents", func(dr chi.Router) {
 		dr.Use(tenantAuthMiddleware)
 		read := nexus.RequirePermission(m.perms, "documents.read")
@@ -392,11 +412,18 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 		dr.Group(func(pr chi.Router) {
 			pr.Use(limitBody)
 			parties := nexus.RequirePermission(m.perms, "documents.parties")
+			send := nexus.RequirePermission(m.perms, "documents.send")
 			pr.With(read).Get("/{id}/parties", m.listPartiesHandler)
 			pr.With(parties).Post("/{id}/parties", m.addPartyHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
 			pr.With(parties).Post("/{id}/parties/{pid}/signatories", m.addSignatoryHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}/signatories/{sid}", m.removeSignatoryHandler)
+
+			// Дансгүй тал руу явуулах холбоос. Токен нь хариултад НЭГ УДАА
+			// гарна — санд зөвхөн хеш нь байдаг тул дахин асуух зам байхгүй.
+			pr.With(send).Post("/{id}/parties/{pid}/invite", m.createInviteHandler)
+			pr.With(read).Get("/{id}/parties/{pid}/invitations", m.listInvitesHandler)
+			pr.With(send).Delete("/{id}/parties/{pid}/invitations/{iid}", m.revokeInviteHandler)
 
 			// Гэрээний бичвэр. 64 КБ-аас том байж болно — монгол гэрээ кирилл
 			// тул тэмдэгт тутам хоёр байт — тиймээс өөрийн хязгаартай.
@@ -404,7 +431,6 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			pr.With(manage, limitBodyTo(1<<20)).Put("/{id}/body", m.saveBodyHandler)
 
 			// Илгээх: тал бүрийн PDF энд зурагдаж ХӨЛДӨНӨ.
-			send := nexus.RequirePermission(m.perms, "documents.send")
 			pr.With(send).Post("/{id}/send", m.sendHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/signed.pdf", m.partySignedCopyHandler)

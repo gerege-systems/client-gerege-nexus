@@ -126,10 +126,18 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 func TestNoDocumentsRouteIsUnguarded(t *testing.T) {
 	router := routerFor(t, "documents.read").(*chi.Mux)
 
-	var unguarded []string
+	var unguarded, tokenDoor []string
 	err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		if method == http.MethodGet || method == http.MethodHead {
 			return nil // covered by documents.read, which the stub holds
+		}
+		// Урилгын хаалга нь эрхээр бус ТОКЕНоор хамгаалагддаг — доорх
+		// TestTheInvitationDoorIsGuardedByItsToken түүнийг барина. Энд
+		// алгасахдаа НЭРЛЭЖ алгасана: шинэ нэвтрэлтгүй маршрут гарч ирвэл
+		// тэр нь энэ угтварыг зориудаар авах ёстой, санамсаргүй биш.
+		if strings.HasPrefix(route, "/api/v1/contract/") {
+			tokenDoor = append(tokenDoor, method+" "+route)
+			return nil
 		}
 		// Every write must be refused for a member holding only the read right.
 		path := strings.ReplaceAll(route, "/*", "")
@@ -150,5 +158,46 @@ func TestNoDocumentsRouteIsUnguarded(t *testing.T) {
 	}
 	if len(unguarded) > 0 {
 		t.Errorf("these writes were reachable holding only documents.read: %v", unguarded)
+	}
+	// Хаалга нь ганцаараа биш, хэдэн маршрут байх ёстой. Тоо тэглэвэл дээрх
+	// алгасалт бүхэл шалгалтыг чимээгүй унтраасан гэсэн үг.
+	if len(tokenDoor) == 0 {
+		t.Error("урилгын хаалганы маршрутууд алга — алгасалт хоосон юм уу, эсвэл хаалга алдагдсан")
+	}
+}
+
+// Урилгын хаалга нь ЭРХГҮЙ, гэхдээ ХАМГААЛАЛТГҮЙ БИШ.
+//
+// Тэр маршрутуудад нэвтрээгүй хүн хүрдэг — тэр нь зорилго: гэрээ хүлээж
+// авсан хүнд данс байхгүй. Хамгаалалт нь токен: түүнгүйгээр, эсвэл
+// таамагласан токеноор ямар ч мөр буцахгүй.
+//
+// Энэ тестийн сан нь ажилладаггүй порт руу заадаг тул мөрөнд хүрсэн хүсэлт
+// 500 өгнө. Богино токен нь санд ХҮРЭХГҮЙ татгалзана — тиймээс 404 нь
+// «хаалга хаалттай», 500 нь «хаалга нээгдээд сан унасан» гэж уншигдана.
+func TestTheInvitationDoorIsGuardedByItsToken(t *testing.T) {
+	router := routerFor(t, "documents.read").(*chi.Mux)
+
+	var checked int
+	err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if !strings.HasPrefix(route, "/api/v1/contract/") {
+			return nil
+		}
+		path := strings.ReplaceAll(route, "{token}", "not-a-real-token")
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		routerFor(t, "").ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s %s: таамагласан токен %d буцаав, 404 байх ёстой", method, route, rec.Code)
+		}
+		checked++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked == 0 {
+		t.Fatal("урилгын хаалганы нэг ч маршрут олдсонгүй")
 	}
 }
