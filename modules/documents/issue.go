@@ -244,7 +244,12 @@ func (m *DocumentsModule) issueOne(ctx context.Context, tenantID, masterID strin
 	}
 	signerName := strings.TrimSpace(rec.SignerName)
 	if signerName == "" {
-		signerName = "Захирал"
+		if kind == KindPerson {
+			// Хүн ӨӨРӨӨ зурна — «Захирал» биш, өөрийнх нь нэр.
+			signerName = strings.TrimSpace(rec.Name)
+		} else {
+			signerName = "Захирал"
+		}
 	}
 
 	// Хүлээн авагчийн хувийг ЭХЛЭЭД бэлдэнэ — гүйлгээнээс гадуур, учир нь
