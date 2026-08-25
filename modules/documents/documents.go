@@ -408,6 +408,13 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			pr.With(send).Post("/{id}/send", m.sendHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/signed.pdf", m.partySignedCopyHandler)
+
+			// Талын өмнөөс гарын үсэг зурах. Дугаар нь бүртгэлээс гарна,
+			// хүсэлтийн биеэс хэзээ ч биш.
+			signBudget := nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)
+			pr.With(sign, signBudget).Post("/{id}/parties/{pid}/sign/start", m.partySignStartHandler)
+			pr.With(sign).Post("/{id}/parties/{pid}/sign/poll", m.partySignPollHandler)
+			pr.With(sign).Post("/{id}/parties/{pid}/decline", m.declinePartyHandler)
 		})
 
 		dr.Group(func(jr chi.Router) {
