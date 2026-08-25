@@ -186,6 +186,30 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 		only[id] = true
 	}
 
+	// ҮЗЭГЧДИЙГ эхлээд бичнэ.
+	//
+	// `audience` бол гэрээний ХАМТЫН нэр төрх: гэрээнд оролцож буй бүх
+	// байгууллага. `parties_see_each_other` бодлого ЗӨВХӨН үүнээс уншдаг
+	// тул хоосон массив нь хүлээн авагчид өөрөөс нь бусад талыг —
+	// гаргагчийг ч — үл харагдуулна: хэнтэй гэрээ байгуулж байгаагаа
+	// мэдэхгүй хүн юунд нэгдэж байгаагаа мэдэхгүй.
+	//
+	// Хуулбар бичихээс ӨМНӨ: хүлээн авагч эхний секундээс бүрэн зургийг
+	// хардаг байх ёстой.
+	if _, err := m.db.Exec(r.Context(),
+		`UPDATE document_parties p
+		    SET audience = a.ids, updated_at = NOW()
+		   FROM (SELECT array_agg(DISTINCT t) AS ids FROM (
+		           SELECT tenant_id AS t FROM document_parties WHERE document_id = $1
+		           UNION
+		           SELECT counterparty_tenant_id FROM document_parties
+		            WHERE document_id = $1 AND counterparty_tenant_id IS NOT NULL) u) a
+		  WHERE p.document_id = $1 AND p.tenant_id = $2
+		    AND p.audience IS DISTINCT FROM a.ids`, docID, tenantID); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "гэрээний үзэгчид бичигдсэнгүй")
+		return
+	}
+
 	issuer := issuerOf(parties)
 	sent := 0
 	skips := []sendSkip{}
@@ -331,11 +355,18 @@ func (m *DocumentsModule) storePartyCopy(ctx context.Context, tenantID, docID st
 		return fmt.Errorf("freeze the party copy: %w", err)
 	}
 
+	// Гарчиг, төрөл, хугацаа нь ЭНД хөлдөнө — талын мөрөнд, баримтын мөрөнд
+	// биш. Хүлээн авагч `document_records`-ыг хэзээ ч уншихгүй (00005), ба
+	// тэдний харсан гарчиг нь гаргагч дараа нь гарчгаа заcахад
+	// өөрчлөгдөхгүй байх нь тэдний зурсан зүйлийг үнэн байлгана.
 	if _, err := tx.Exec(ctx,
-		`UPDATE document_parties
-		    SET state = CASE WHEN state = 'draft' THEN 'invited' ELSE state END,
-		        invited_at = COALESCE(invited_at, NOW()), updated_at = NOW()
-		  WHERE id = $1 AND tenant_id = $2`, p.ID, tenantID); err != nil {
+		`UPDATE document_parties p
+		    SET state = CASE WHEN p.state = 'draft' THEN 'invited' ELSE p.state END,
+		        invited_at = COALESCE(p.invited_at, NOW()), updated_at = NOW(),
+		        doc_title = r.title, doc_type = r.doc_type, doc_due_at = r.due_at
+		   FROM document_records r
+		  WHERE p.id = $1 AND p.tenant_id = $2 AND r.id = p.document_id`,
+		p.ID, tenantID); err != nil {
 		return fmt.Errorf("mark the party invited: %w", err)
 	}
 

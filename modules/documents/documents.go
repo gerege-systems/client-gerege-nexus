@@ -415,6 +415,28 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			pr.With(sign, signBudget).Post("/{id}/parties/{pid}/sign/start", m.partySignStartHandler)
 			pr.With(sign).Post("/{id}/parties/{pid}/sign/poll", m.partySignPollHandler)
 			pr.With(sign).Post("/{id}/parties/{pid}/decline", m.declinePartyHandler)
+
+			// ХҮЛЭЭН АВАГЧИЙН ГАДАРГУУ.
+			//
+			// `/{id}/...`-ийн доор БИШ, санаатайгаар: тэдгээр маршрут нь
+			// баримтын id-гаар эхэлдэг бөгөөд хүлээн авагч тэр баримтыг
+			// эзэмшдэггүй. Энд хаяг нь ТАЛЫН id — хүлээн авагчид өгөгдсөн
+			// цорын ганц зүйл — ба хүрэх эрх нь тэр мөрөөс гарна.
+			//
+			// Эрх: унших ба гарын үсэг зурах нь ердийн хэрэглэгчийнх; ХЭН
+			// гарын үсэг зурахыг шийдэх нь `documents.parties` — тэр нь
+			// хүлээн авагчийн ӨӨРИЙН байгууллагад асуугдана, учир нь эрх
+			// нь идэвхтэй байгууллагын гишүүнчлэлээс гардаг.
+			pr.With(read).Get("/inbox", m.inboxHandler)
+			pr.With(read).Get("/inbox/{pid}", m.inboxShowHandler)
+			pr.With(read).Get("/inbox/{pid}/copy", m.inboxCopyHandler)
+			pr.With(read).Get("/inbox/{pid}/signed.pdf", m.inboxSignedCopyHandler)
+			pr.With(read).Get("/inbox/{pid}/signatories", m.inboxSignatoriesHandler)
+			pr.With(parties).Post("/inbox/{pid}/signatories", m.inboxNominateHandler)
+			pr.With(parties).Delete("/inbox/{pid}/signatories/{sid}", m.inboxWithdrawNomineeHandler)
+			pr.With(sign, signBudget).Post("/inbox/{pid}/sign/start", m.inboxSignStartHandler)
+			pr.With(sign).Post("/inbox/{pid}/sign/poll", m.inboxSignPollHandler)
+			pr.With(sign).Post("/inbox/{pid}/decline", m.inboxDeclineHandler)
 		})
 
 		dr.Group(func(jr chi.Router) {

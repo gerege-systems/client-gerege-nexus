@@ -38,7 +38,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
 
@@ -123,10 +122,15 @@ func (m *DocumentsModule) signerFor(ctx context.Context, tenantID, docID, partyI
 	s.SignatoryID, s.FullName, s.RegNumber = pick.id, pick.name, pick.reg
 
 	// Зурагдах байт нь ХӨЛДСӨН хувь. Дахин үүсгэхгүй.
+	//
+	// Гарчиг нь ТАЛЫН мөрөөс — `document_records`-оос БИШ. Хоёр шалтгаан:
+	// хүлээн авагчийн сесс тэр хүснэгтийг уншиж чаддаггүй (уншиж ч болохгүй),
+	// ба PIN2 дэлгэц дээр гарах бичвэр нь тэдний ХАРСАН гарчиг байх ёстой —
+	// гаргагч дараа нь гарчгаа заcсан ч.
 	err = m.db.QueryRow(ctx,
-		`SELECT f.file_name, f.sha256, f.content, r.title
+		`SELECT f.file_name, f.sha256, f.content, p.doc_title
 		   FROM document_party_files f
-		   JOIN document_records r ON r.id = f.document_id
+		   JOIN document_parties p ON p.id = f.party_id
 		  WHERE f.party_id = $1 AND f.tenant_id = $2`, partyID, tenantID).
 		Scan(&s.FileName, &s.SHA256, &s.PDF, &s.Title)
 	if isNoRows(err) || len(s.PDF) == 0 {
@@ -161,11 +165,12 @@ func (m *DocumentsModule) startPartySignature(ctx context.Context, s partySigner
 	// шинийг зөвшөөрнө, эс бөгөөс орхигдсон ёслол талыг үүрд түгжинэ.
 	tag, err := m.db.Exec(ctx,
 		`UPDATE document_parties
-		    SET session_id = $3, session_at = NOW(), session_by = NULLIF($4,'')::uuid, updated_at = NOW()
+		    SET session_id = $3, session_at = NOW(), session_by = NULLIF($4,'')::uuid,
+		        session_signatory_id = $5, updated_at = NOW()
 		  WHERE id = $1 AND tenant_id = $2
 		    AND state IN ('invited','viewed')
 		    AND (session_id IS NULL OR session_at IS NULL OR session_at < NOW() - INTERVAL '20 minutes')`,
-		s.PartyID, s.TenantID, started.SessionID, actor)
+		s.PartyID, s.TenantID, started.SessionID, actor, s.SignatoryID)
 	if err != nil {
 		return nil, fmt.Errorf("record the ceremony: %w", err)
 	}
@@ -175,12 +180,15 @@ func (m *DocumentsModule) startPartySignature(ctx context.Context, s partySigner
 
 	// Ёслол ба хөлдсөн байтыг хослуулж бичнэ: буцаж ирсэн зүйлийг илгээсэн
 	// зүйлтэй тулгах цорын ганц зам.
+	// `party_id` нь бүртгэл биш, ХААЛГА: түүнээс trigger нь мөрийн
+	// `counterparty_tenant_id`-г гаргах ба тэр нь хүлээн авагчийн сессэд
+	// энэ мөрийг бичих цорын ганц зөвшөөрөл (00005).
 	if _, err := m.db.Exec(ctx,
 		`INSERT INTO document_eid_sign_sessions
-		     (session_id, tenant_id, document_id, reg_number, display_text, requested_digest, format)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		     (session_id, tenant_id, document_id, reg_number, display_text, requested_digest, format, party_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		started.SessionID, s.TenantID, s.DocID, s.RegNumber,
-		signatureDisplayText(s.Title), s.SHA256, string(domain.FormatPAdES)); err != nil {
+		signatureDisplayText(s.Title), s.SHA256, string(domain.FormatPAdES), s.PartyID); err != nil {
 		return nil, fmt.Errorf("record signing session: %w", err)
 	}
 
@@ -197,17 +205,23 @@ func (m *DocumentsModule) pollPartySignature(ctx context.Context, tenantID, docI
 		return nil, ErrNoSigningRail
 	}
 
-	var sessionID, regNumber, frozenSHA string
+	// Регистрийн дугаар нь ЁСЛОЛ ЭХЛҮҮЛСЭН мөрөөс гарна.
+	//
+	// Урьд нь энэ query «гарын үсэг зураагүй хамгийн эртний бүртгэлтэй хүн»
+	// гэж таамагладаг байв. Хоёр гарын үсэг зурагчтай тал дээр хоёр дахь нь
+	// ёслол эхлүүлбэл poll нь ЭХНИЙХИЙН дугаараар рельсээс асуух ба буцаж
+	// ирсэн гарын үсгийг тэр хүний нэр дээр бүртгэнэ — өөр иргэний PIN2-ыг
+	// өөр хүний нэр дээр бичих зам.
+	var sessionID, regNumber, signatoryID, frozenSHA string
 	var pdf []byte
 	err := m.db.QueryRow(ctx,
-		`SELECT COALESCE(p.session_id,''), COALESCE(g.reg_number,''), f.sha256, f.content
+		`SELECT COALESCE(p.session_id,''), COALESCE(g.reg_number,''), COALESCE(g.id::text,''),
+		        f.sha256, f.content
 		   FROM document_parties p
 		   JOIN document_party_files f ON f.party_id = p.id
-		   LEFT JOIN document_party_signatories g
-		          ON g.party_id = p.id AND g.signed_at IS NULL
-		  WHERE p.id = $1 AND p.tenant_id = $2 AND p.document_id = $3
-		  ORDER BY g.created_at LIMIT 1`,
-		partyID, tenantID, docID).Scan(&sessionID, &regNumber, &frozenSHA, &pdf)
+		   LEFT JOIN document_party_signatories g ON g.id = p.session_signatory_id
+		  WHERE p.id = $1 AND p.tenant_id = $2 AND p.document_id = $3`,
+		partyID, tenantID, docID).Scan(&sessionID, &regNumber, &signatoryID, &frozenSHA, &pdf)
 	if isNoRows(err) {
 		return nil, ErrPartyNotFound
 	}
@@ -216,6 +230,10 @@ func (m *DocumentsModule) pollPartySignature(ctx context.Context, tenantID, docI
 	}
 	if sessionID == "" {
 		return nil, errors.New("гарын үсгийн ёслол эхлээгүй байна")
+	}
+	if signatoryID == "" || regNumber == "" {
+		// Ёслол нээлттэй мөртлөө хэнийх нь мэдэгдэхгүй бол таамаглахгүй.
+		return nil, errors.New("энэ ёслолыг эхлүүлсэн гарын үсэг зурагч бүртгэлээс алга")
 	}
 
 	state, err := m.signer.PollSignature(ctx, regNumber, sessionID)
@@ -226,7 +244,8 @@ func (m *DocumentsModule) pollPartySignature(ctx context.Context, tenantID, docI
 		if state.Settled() {
 			// Дууссан ч гарын үсэг гараагүй бол түгжээг тавьж үлдээхгүй.
 			_, _ = m.db.Exec(ctx,
-				`UPDATE document_parties SET session_id = NULL, session_at = NULL
+				`UPDATE document_parties
+				    SET session_id = NULL, session_at = NULL, session_signatory_id = NULL
 				  WHERE id = $1 AND tenant_id = $2 AND session_id = $3`, partyID, tenantID, sessionID)
 		}
 		return &EIDSignProgress{State: approvalStateOf(state)}, nil
@@ -247,7 +266,7 @@ func (m *DocumentsModule) pollPartySignature(ctx context.Context, tenantID, docI
 	}
 
 	if err := m.recordPartySignature(ctx, tenantID, docID, partyID, sessionID,
-		regNumber, signed.PDF, frozenSHA); err != nil {
+		signatoryID, regNumber, signed.PDF, frozenSHA); err != nil {
 		return nil, err
 	}
 	return &EIDSignProgress{State: ApprovalComplete}, nil
@@ -259,7 +278,7 @@ func (m *DocumentsModule) pollPartySignature(ctx context.Context, tenantID, docI
 // Аль нэг нь бичигдээгүй бол бусад нь ч бичигдэхгүй — гарын үсэгтэй байт
 // байгаа мөртлөө бүртгэлгүй тал бол хариултгүй асуулт.
 func (m *DocumentsModule) recordPartySignature(ctx context.Context, tenantID, docID, partyID,
-	sessionID, regNumber string, signedPDF []byte, coveredDigest string) error {
+	sessionID, signatoryID, regNumber string, signedPDF []byte, coveredDigest string) error {
 
 	// Иргэн аль хэдийн зөвшөөрсөн тул дуудагч холболтоо тасалсан ч гарын
 	// үсэг устах ёсгүй.
@@ -274,13 +293,13 @@ func (m *DocumentsModule) recordPartySignature(ctx context.Context, tenantID, do
 
 	// Зөвхөн нээлттэй ёслолтой, шийдвэрлэгдээгүй тал. Хоёр poll зэрэг ирвэл
 	// нэг нь л дийлнэ.
-	var signatoryID, fullName string
+	var settled, fullName string
 	err = tx.QueryRow(ctx,
 		`UPDATE document_parties
 		    SET state = 'signed', signed_at = NOW(), session_id = NULL, session_at = NULL,
-		        updated_at = NOW()
+		        session_signatory_id = NULL, updated_at = NOW()
 		  WHERE id = $1 AND tenant_id = $2 AND session_id = $3 AND state IN ('invited','viewed')
-		 RETURNING id`, partyID, tenantID, sessionID).Scan(&signatoryID)
+		 RETURNING id`, partyID, tenantID, sessionID).Scan(&settled)
 	if isNoRows(err) {
 		return ErrPartySettled
 	}
@@ -288,11 +307,14 @@ func (m *DocumentsModule) recordPartySignature(ctx context.Context, tenantID, do
 		return fmt.Errorf("settle the party: %w", err)
 	}
 
+	// Яг ТЭР мөр — `id`-гаар, дугаараар биш. Нэг иргэн нэг гэрээнд хоёр
+	// талын өмнөөс бүртгэгдсэн байж болно (жишээ нь өөрийн компани ба
+	// өөрийн нэрээр), тэгэхэд дугаараар хайх нь буруу мөрийг хаана.
 	if err = tx.QueryRow(ctx,
 		`UPDATE document_party_signatories
 		    SET signed_at = NOW()
-		  WHERE party_id = $1 AND reg_number = $2 AND signed_at IS NULL
-		 RETURNING id, full_name`, partyID, regNumber).Scan(&signatoryID, &fullName); err != nil {
+		  WHERE id = $1 AND party_id = $2 AND reg_number = $3 AND signed_at IS NULL
+		 RETURNING full_name`, signatoryID, partyID, regNumber).Scan(&fullName); err != nil {
 		if isNoRows(err) {
 			return errors.New("гарын үсэг зурсан хүн энэ талын бүртгэлд алга")
 		}
@@ -327,43 +349,12 @@ func (m *DocumentsModule) recordPartySignature(ctx context.Context, tenantID, do
 		return fmt.Errorf("record the event: %w", err)
 	}
 
-	if err = refreshContractState(ctx, tx, tenantID, docID); err != nil {
-		return err
-	}
+	// `document_records.contract_state`-ыг ЭНД шинэчлэхгүй: 00005-ийн trigger
+	// нь талын мөр өөрчлөгдөх бүрд тоолно. Гурван зам (гаргагч, хүлээн
+	// авагч, урилгын токен) нэг тоолуур хуваах нь хоёр дахь замдаа
+	// мартагдахгүйн цорын ганц баталгаа — ба хүлээн авагчийн сесс
+	// `document_records` руу бичих эрхгүй.
 	return tx.Commit(ctx)
-}
-
-// refreshContractState нь талуудын төлөвөөс гэрээний нэгтгэсэн төлвийг гаргана.
-//
-// Хадгалагддаг, тооцогддоггүй нь санаатай: жагсаалтын дэлгэц гэрээ бүрийн
-// талуудыг тоолохгүйгээр төлвийг харуулах ёстой.
-func refreshContractState(ctx context.Context, tx querierExec, tenantID, docID string) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE document_records r
-		    SET contract_state = CASE
-		          WHEN c.required_total = 0 THEN r.contract_state
-		          WHEN c.declined > 0       THEN $3
-		          WHEN c.signed >= c.required_total THEN $4
-		          WHEN c.signed > 0         THEN $5
-		          ELSE $6 END,
-		        executed_at = CASE WHEN c.required_total > 0 AND c.signed >= c.required_total
-		                           THEN COALESCE(r.executed_at, NOW()) ELSE r.executed_at END
-		   FROM (SELECT
-		           count(*) FILTER (WHERE required AND party_role <> 'issuer') AS required_total,
-		           count(*) FILTER (WHERE required AND party_role <> 'issuer' AND state = 'signed') AS signed,
-		           count(*) FILTER (WHERE required AND party_role <> 'issuer' AND state = 'declined') AS declined
-		         FROM document_parties WHERE document_id = $2) c
-		  WHERE r.id = $2 AND r.tenant_id = $1`,
-		tenantID, docID, ContractDeclined, ContractExecuted, ContractPartial, ContractSent)
-	if err != nil {
-		return fmt.Errorf("refresh contract state: %w", err)
-	}
-	return nil
-}
-
-// querierExec нь Exec-тэй гүйлгээ.
-type querierExec interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // ─────────────────────────────────────────────────────────────── handler-ууд
@@ -456,7 +447,7 @@ func (m *DocumentsModule) declinePartyHandler(w http.ResponseWriter, r *http.Req
 	tag, err := tx.Exec(r.Context(),
 		`UPDATE document_parties
 		    SET state = 'declined', declined_at = NOW(), decline_reason = $3,
-		        session_id = NULL, session_at = NULL, updated_at = NOW()
+		        session_id = NULL, session_at = NULL, session_signatory_id = NULL, updated_at = NOW()
 		  WHERE id = $1 AND tenant_id = $2 AND state IN ('invited','viewed')`,
 		partyID, tenantID, strings.TrimSpace(req.Reason))
 	if err != nil {
@@ -471,10 +462,6 @@ func (m *DocumentsModule) declinePartyHandler(w http.ResponseWriter, r *http.Req
 		`INSERT INTO document_party_events (tenant_id, party_id, document_id, kind, detail)
 		 VALUES ($1, $2, $3, 'declined', $4)`, tenantID, partyID, docID, strings.TrimSpace(req.Reason)); err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "татгалзал бичигдсэнгүй")
-		return
-	}
-	if err := refreshContractState(r.Context(), tx, tenantID, docID); err != nil {
-		nexus.Error(w, http.StatusInternalServerError, "гэрээний төлөв шинэчлэгдсэнгүй")
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
