@@ -26,12 +26,24 @@ COPY . .
 # is checked against, and the honest answer is the version of the platform
 # actually compiled into this image. Left to a build argument it defaults to
 # 0.0.0, and the instance then refuses every manifest it ships with — it cannot
-# read its own catalogue, so it will not start.
+# read its own catalogue, so it will not start.#
+# Which package holds it is asked rather than assumed. PlatformVersion moved
+# from internal/platform to internal/kernel/config after the core's v1.13.0,
+# and `-X` naming a symbol that does not exist is **silently ignored** by the
+# linker: a stale path builds cleanly, produces an image that reports the
+# default 1.1.0, and that image then refuses every manifest it ships with and
+# never comes up. Nothing in the build log says so. So the two candidates are
+# probed in order and a core with neither fails the build here, loudly.
 RUN core=$(go list -m -f '{{.Version}}' github.com/gerege-systems/open-gerege-nexus/backend) \
     && version=${core#v} \
-    && echo "building as platform ${version}" \
+    && base=github.com/gerege-systems/open-gerege-nexus/backend/internal \
+    && for pkg in kernel/config platform; do \
+         if go list "$base/$pkg" >/dev/null 2>&1; then sym="$base/$pkg.PlatformVersion"; break; fi; \
+       done \
+    && { [ -n "${sym:-}" ] || { echo "no PlatformVersion package in ${core}"; exit 1; }; } \
+    && echo "building as platform ${version} (${sym##*/internal/})" \
     && CGO_ENABLED=0 GOOS=linux go build -trimpath \
-    -ldflags="-w -s -X github.com/gerege-systems/open-gerege-nexus/backend/internal/platform.PlatformVersion=${version}" \
+    -ldflags="-w -s -X ${sym}=${version}" \
     -o /bin/clientnexus .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s" \
