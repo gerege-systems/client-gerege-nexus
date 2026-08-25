@@ -336,15 +336,10 @@ func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 		// харагдацтай хуудсанд очдог — аппын дэлгэц апп дотроо байх ёстой.
 		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", Path: "/module/documents/contracts", Icon: "scroll-text", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
 		{ID: "documents.inbox", ParentID: "operations", Label: "Incoming contracts", Path: "/module/documents/inbox", Icon: "inbox", Order: 32, Labels: map[string]string{"mn": "Ирсэн гэрээ", "ar": "العقود الواردة", "zh": "收到的合同", "fr": "Contrats reçus", "ru": "Входящие договоры", "es": "Contratos recibidos"}},
-		{ID: "documents.approvals", ParentID: "operations", Label: "Approval queue", Path: "/module/documents/approvals", Icon: "list-checks", Order: 33, Labels: map[string]string{"mn": "Батлах дараалал", "ar": "قائمة الموافقات", "zh": "审批队列", "fr": "File d'approbation", "ru": "Очередь согласования", "es": "Cola de aprobación"}},
-		{ID: "documents.pdf", ParentID: "operations", Label: "PDF signing", Path: "/module/documents/pdf", Icon: "pen-tool", Order: 34, Labels: map[string]string{"mn": "PDF гарын үсэг", "ar": "توقيع PDF", "zh": "PDF 签名", "fr": "Signature PDF", "ru": "Подпись PDF", "es": "Firma de PDF"}},
-		{ID: "documents.batch", ParentID: "operations", Label: "Batch signing", Path: "/module/documents/batch", Icon: "layers", Order: 35, Labels: map[string]string{"mn": "Багц гарын үсэг", "ar": "توقيع دفعي", "zh": "批量签名", "fr": "Signature par lot", "ru": "Пакетная подпись", "es": "Firma por lotes"}},
-		{ID: "documents.logs", ParentID: "operations", Label: "Signature log", Path: "/module/documents/logs", Icon: "activity", Order: 36, Labels: map[string]string{"mn": "Гарын үсгийн лог", "ar": "سجل التوقيعات", "zh": "签名日志", "fr": "Journal des signatures", "ru": "Журнал подписей", "es": "Registro de firmas"}},
-		// Тайлан руу энэ аппын дотроос хүрэх хаалга. Дэлгэц нь платформын
-		// нэгдсэн /reports — энэ модулийн RegisterReport-оор зарласан таван
-		// тайлан тэнд өөрийн группээрээ гарна (гэрээний бүртгэл, хүлээгдэж
-		// буй гарын үсэг, гарын үсгийн бүртгэл, урсгал, дуусах гэрээ).
-		{ID: "documents.reports", ParentID: "operations", Label: "Reports", Path: "/reports", Icon: "bar-chart-3", Order: 37, Labels: map[string]string{"mn": "Тайлан", "ar": "التقارير", "zh": "报表", "fr": "Rapports", "ru": "Отчёты", "es": "Informes"}},
+		// Тайлан — энэ аппын ӨӨРИЙН дэлгэц: таван тайлан (гэрээний бүртгэл,
+		// хүлээгдэж буй гарын үсэг, гарын үсгийн бүртгэл, урсгал, дуусах
+		// гэрээ) параметр, хүснэгт, график, Excel экспорттойгоо.
+		{ID: "documents.reports", ParentID: "operations", Label: "Reports", Path: "/module/documents/reports", Icon: "bar-chart-3", Order: 33, Labels: map[string]string{"mn": "Тайлан", "ar": "التقارير", "zh": "报表", "fr": "Rapports", "ru": "Отчёты", "es": "Informes"}},
 
 		// ТОХИРГОО. Цэсний Тохиргоо группыг платформ өөрөө нээдэг боловч
 		// v1.13.0-д түүнийг зөвхөн цөмийн blueprint дүүргэдэг байсан — гарсан
@@ -352,10 +347,7 @@ func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 		// аль дэлгэц нь ТОХИРГОО болохоо id-гаараа хэлнэ: бүрхүүл `.settings.`
 		// агуулсан id-г Тохиргоо группд нь байрлуулна.
 		{ID: "documents.settings.templates", ParentID: "operations", Label: "Templates", Path: "/module/documents/templates", Icon: "files", Order: 10, Labels: map[string]string{"mn": "Загвар", "ar": "القوالب", "zh": "模板", "fr": "Modèles", "ru": "Шаблоны", "es": "Plantillas"}},
-		{ID: "documents.settings.workflows", ParentID: "operations", Label: "Approval chains", Path: "/module/documents/workflows", Icon: "workflow", Order: 20, Labels: map[string]string{"mn": "Батлах алхам", "ar": "سلاسل الموافقة", "zh": "审批链", "fr": "Circuits d'approbation", "ru": "Цепочки согласования", "es": "Cadenas de aprobación"}},
 		{ID: "documents.settings.signatures", ParentID: "operations", Label: "Signature policies", Path: "/module/documents/signatures", Icon: "shield-check", Order: 30, Labels: map[string]string{"mn": "Гарын үсгийн бодлого", "ar": "سياسات التوقيع", "zh": "签名策略", "fr": "Politiques de signature", "ru": "Политики подписи", "es": "Políticas de firma"}},
-		{ID: "documents.settings.rails", ParentID: "operations", Label: "Signing rails", Path: "/module/documents/rails", Icon: "server-cog", Order: 40, Labels: map[string]string{"mn": "Гарын үсгийн рельс", "ar": "قنوات التوقيع", "zh": "签名通道", "fr": "Canaux de signature", "ru": "Каналы подписи", "es": "Canales de firma"}},
-		{ID: "documents.settings.placement", ParentID: "operations", Label: "Stamp placement", Path: "/module/documents/placement", Icon: "move", Order: 50, Labels: map[string]string{"mn": "Дардасны байрлал", "ar": "موضع الختم", "zh": "印章位置", "fr": "Position du cachet", "ru": "Положение штампа", "es": "Posición del sello"}},
 		{ID: "documents.settings.retention", ParentID: "operations", Label: "Retention", Path: "/module/documents/retention", Icon: "archive", Order: 60, Labels: map[string]string{"mn": "Хадгалалт", "ar": "الاحتفاظ", "zh": "保留策略", "fr": "Conservation", "ru": "Хранение", "es": "Conservación"}},
 	}
 }
@@ -477,6 +469,9 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 
 			// Илгээх: тал бүрийн PDF энд зурагдаж ХӨЛДӨНӨ.
 			pr.With(send).Post("/{id}/send", m.sendHandler)
+			// Тараалт: хүлээн авагч бүрд ТУСДАА гэрээ — issue.go-г үз.
+			// Excel файл ирж болох тул биеийн хязгаар нь импортынхтой ижил.
+			pr.With(send, limitBodyTo(importBodyLimit)).Post("/{id}/issue", m.issueHandler)
 			pr.With(send).Post("/{id}/withdraw", m.withdrawHandler)
 			pr.With(send).Post("/{id}/reopen", m.reopenHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
@@ -614,6 +609,9 @@ func (m *DocumentsModule) listDocumentsHandler(w http.ResponseWriter, r *http.Re
 		Search:  query.Get("q"),
 		Order:   query.Get("order"),
 		AfterID: strings.TrimSpace(query.Get("after_id")),
+		// Анхдагч нь БҮГД — API-ийн хуучин дуудагчид юу ч өөрчлөгдөхгүй;
+		// бүртгэлийн дэлгэц л contracts=exclude гэж ил хэлдэг.
+		ExcludeContracts: query.Get("contracts") == "exclude",
 	}
 	if raw := strings.TrimSpace(query.Get("after_at")); raw != "" {
 		at, parseErr := time.Parse(time.RFC3339Nano, raw)
@@ -1478,6 +1476,12 @@ type DocumentFilter struct {
 	Search string
 	// Order is ListOrderOldest, or empty for newest first.
 	Order string
+	// ExcludeContracts drops the documents that live in the contracts screen.
+	// The plain register answers "what has this organisation filed"; a contract
+	// with parties has its own screen, its own states and its own list, and
+	// showing it in both places made people sign it from the wrong one — the
+	// register's sign button knows nothing about parties or frozen copies.
+	ExcludeContracts bool
 	// AfterAt and AfterID continue from a row already seen: the answer holds only the
 	// documents that come after it in this order.
 	//
@@ -1546,6 +1550,9 @@ func (m *DocumentsModule) ListDocuments(ctx context.Context, tenantID string, fi
 		   AND ($2 = '' OR d.status = $2)
 		   AND ($3 = '' OR d.doc_type = $3)
 		   AND ($4 = '' OR ` + m.titleMatch(ctx) + `)`
+	if filter.ExcludeContracts {
+		where += ` AND d.contract_state = 'NONE'`
+	}
 
 	// The count and the rows are two statements, so a document created or deleted
 	// between them can leave the total off by one or two. That is deliberate: both ask
