@@ -43,6 +43,7 @@ type ContractRow struct {
 	DeclinedCount  int        `json:"declined_count"`
 	Amount         *float64   `json:"amount,omitempty"`
 	Currency       string     `json:"currency,omitempty"`
+	EffectiveFrom  *time.Time `json:"effective_from,omitempty"`
 	SentAt         *time.Time `json:"sent_at,omitempty"`
 	ExecutedAt     *time.Time `json:"executed_at,omitempty"`
 	DueAt          *time.Time `json:"due_at,omitempty"`
@@ -87,7 +88,7 @@ func (m *DocumentsModule) listContractsHandler(w http.ResponseWriter, r *http.Re
 		        count(*) FILTER (WHERE c.party_role <> 'issuer' AND c.required),
 		        count(*) FILTER (WHERE c.party_role <> 'issuer' AND c.state = 'declined'),
 		        r.amount, COALESCE(r.currency, ''),
-		        r.sent_at, r.executed_at, r.due_at, r.effective_to, r.created_at
+		        r.effective_from, r.sent_at, r.executed_at, r.due_at, r.effective_to, r.created_at
 		   FROM document_records r
 		   LEFT JOIN document_parties c ON c.document_id = r.id AND c.tenant_id = r.tenant_id
 		  WHERE r.tenant_id = $1
@@ -110,7 +111,8 @@ func (m *DocumentsModule) listContractsHandler(w http.ResponseWriter, r *http.Re
 		if err := rows.Scan(&v.ID, &v.Number, &v.Title, &v.DocType, &v.State, &v.Mode,
 			&v.Counterparties, &v.PartyCount, &v.SignedCount, &v.RequiredCount, &v.DeclinedCount,
 			&v.Amount, &v.Currency,
-			&v.SentAt, &v.ExecutedAt, &v.DueAt, &v.EffectiveTo, &v.CreatedAt); err != nil {
+			&v.EffectiveFrom, &v.SentAt, &v.ExecutedAt, &v.DueAt, &v.EffectiveTo,
+			&v.CreatedAt); err != nil {
 			nexus.Error(w, http.StatusInternalServerError, "мөр уншигдсангүй")
 			return
 		}

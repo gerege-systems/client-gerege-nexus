@@ -340,3 +340,39 @@ func TestRenderSurvivesCharactersOutsideTheBasicPlane(t *testing.T) {
 		t.Errorf("эргэн тойрны бичвэр алдагдав: %q", text)
 	}
 }
+
+// Ерөнхий орлуулгууд нь ерөнхий гэрээнд ажиллах ёстой.
+//
+// `render.go` энэ репод eduge-ээс зөөгдөж ирсэн бөгөөд орлуулгын нэрс нь
+// сургуулийнхаар үлдсэн байв: нийлүүлэгчтэй гэрээ бичиж буй хүнд «нөгөө
+// талын нэр» гэсэн орлуулга байхгүй, зөвхөн `{{сургууль}}` байсан.
+func TestGeneralPlaceholdersNameWhatTheySubstitute(t *testing.T) {
+	f := Fields{
+		SchoolName: "Нийлүүлэгч ХХК", SchoolCode: "5555555",
+		Principal: "Ганбат", Title: "Нийлүүлэлтийн гэрээ",
+		Address: "СБД 1-р хороо", ContractCode: "2026/07",
+	}
+	body := "{{тал}} | {{регистр}} | {{төлөөлөгч}} | {{гэрээ}} | {{хаяг}} | {{дугаар}}"
+	got := Substitute(body, f)
+	for _, want := range []string{
+		"Нийлүүлэгч ХХК", "5555555", "Ганбат", "Нийлүүлэлтийн гэрээ",
+		"СБД 1-р хороо", "2026/07",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q орлуулагдсангүй: %q", want, got)
+		}
+	}
+	if strings.Contains(got, "{{") {
+		t.Errorf("орлуулагдаагүй хаалт үлдэв: %q", got)
+	}
+}
+
+// Сургуулийн хуучин нэрс АЖИЛЛАСААР байх ёстой: аль хэдийн бичигдсэн
+// бичвэрийг эвдэх нь тэднийг дахин бичүүлэхээс дор.
+func TestTheOlderSchoolPlaceholdersStillWork(t *testing.T) {
+	got := Substitute("{{сургууль}} / {{захирал}}",
+		Fields{SchoolName: "12-р сургууль", Principal: "Дорж"})
+	if got != "12-р сургууль / Дорж" {
+		t.Errorf("хуучин орлуулга эвдэрсэн: %q", got)
+	}
+}

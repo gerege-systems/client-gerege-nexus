@@ -1639,6 +1639,16 @@ func isConstraintViolation(err error, name string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == name
 }
 
+// isCheckViolation нь нэрлэсэн CHECK-ийн зөрчил.
+//
+// 23505-аас тусдаа: давхардал нь «энэ аль хэдийн байна» (409), CHECK нь
+// «илгээсэн зүйл чинь утгагүй» (400). Хоёуланг нь нэг функцээр барих нь
+// дуудагчид тэр ялгааг хийх боломж үлдээхгүй.
+func isCheckViolation(err error, name string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == name
+}
+
 // writeWriteFailure sorts a failed write into the class its caller can act on:
 // what they sent (400 with the reason), a collision with somebody else's change
 // (409, retryable), or ours (500 with a fixed message, the driver's own text

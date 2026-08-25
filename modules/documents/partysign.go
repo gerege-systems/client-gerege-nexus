@@ -71,6 +71,14 @@ var (
 // олдохгүй бол тухайн талын цорын ганц гарын үсэг зурагчийг авна. Хоёроос
 // олон бүртгэлтэй, аль нь ч дуудагчид хамаарахгүй бол татгалзана: аль нэгийг
 // нь сонгох нь гарын үсгийг буруу хүний нэр дээр бүртгэх зам.
+//
+// ДУГААРГҮЙ МӨР НЭР ДЭВШИГЧ БИШ. `addSignatoryHandler` нь регистрийн дугааргүй
+// бүртгэлийг зөвшөөрдөг (томилох агшинд админ мэдэхгүй байж болно), гэвч
+// ёслол иргэнийг дугаараар нь олдог тул тийм мөрөөр хэнд ч хүрэхгүй. Түүнийг
+// нэр дэвшигчдийн жагсаалтад үлдээх нь мухардал үүсгэж байв: гаргагч дугааргүй
+// мөр үүсгэсэн, хүлээн авагч өөрийн дугаартай мөрөө нэмсэн, эрэмбэ нь
+// ҮҮСГЭСЭН ЦАГААР явдаг тул дугааргүй нь эхэлж таарч, ёслол «дугаар
+// бүртгэгдээгүй» гэж унана — хажууд нь бүрэн бүртгэл байхад.
 func (m *DocumentsModule) signerFor(ctx context.Context, tenantID, docID, partyID, userID string) (partySigner, error) {
 	var s partySigner
 	s.TenantID, s.DocID, s.PartyID = tenantID, docID, partyID
@@ -111,7 +119,9 @@ func (m *DocumentsModule) signerFor(ctx context.Context, tenantID, docID, partyI
 		`SELECT g.id, g.full_name, g.reg_number, COALESCE(g.user_id::text, '')
 		   FROM document_party_signatories g
 		   JOIN document_parties p ON p.id = g.party_id
-		  WHERE p.id = $1 AND p.document_id = $2 AND g.signed_at IS NULL
+		  WHERE p.id = $1 AND p.document_id = $2
+		    AND g.signed_at IS NULL
+		    AND btrim(g.reg_number) <> ''
 		  ORDER BY g.created_at`, partyID, docID)
 	if err != nil {
 		return s, fmt.Errorf("read signatories: %w", err)

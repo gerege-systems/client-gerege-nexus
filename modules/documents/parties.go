@@ -223,15 +223,33 @@ type contractShape struct {
 	DocType string
 	Title   string
 	Signed  int
+
+	// Гэрээний ХЭРЭГ ФАКТУУД. Энд байгаа нь дэлгэцийн шаардлага биш,
+	// зөв хариултын шаардлага: гэрээний дугаар, дүн, хугацааг харуулах
+	// цорын ганц өөр зам нь гэрээний ЖАГСААЛТААС хайх байсан ба тэр
+	// жагсаалт `contract_state <> 'NONE'` гэж шүүдэг. Өөрөөр хэлбэл
+	// шинэ гэрээ — тал нэмэгдэхээс өмнөх — жагсаалтад БАЙХГҮЙ тул
+	// хэрэглэгч дугаараа бичиж хадгалаад, хуудсаа сэргээхэд хоосон
+	// талбар хардаг байв. Хадгалагдсан өгөгдөл харагдахгүй байх нь
+	// хадгалагдаагүйтэй адил уншигдана.
+	Number        string     `json:"contract_number"`
+	Amount        *float64   `json:"amount,omitempty"`
+	Currency      string     `json:"currency,omitempty"`
+	EffectiveFrom *time.Time `json:"effective_from,omitempty"`
+	EffectiveTo   *time.Time `json:"effective_to,omitempty"`
+	DueAt         *time.Time `json:"due_at,omitempty"`
 }
 
 func (m *DocumentsModule) contractShapeOf(ctx context.Context, q querier, tenantID, docID string) (contractShape, error) {
 	var s contractShape
 	err := q.QueryRow(ctx,
 		`SELECT r.signing_mode, r.contract_state, r.status, r.doc_type, r.title,
-		        (SELECT count(*) FROM document_signatures g WHERE g.document_id = r.id)
+		        (SELECT count(*) FROM document_signatures g WHERE g.document_id = r.id),
+		        r.contract_number, r.amount, COALESCE(r.currency, ''),
+		        r.effective_from, r.effective_to, r.due_at
 		   FROM document_records r WHERE r.id = $1 AND r.tenant_id = $2`,
-		docID, tenantID).Scan(&s.Mode, &s.State, &s.Status, &s.DocType, &s.Title, &s.Signed)
+		docID, tenantID).Scan(&s.Mode, &s.State, &s.Status, &s.DocType, &s.Title, &s.Signed,
+		&s.Number, &s.Amount, &s.Currency, &s.EffectiveFrom, &s.EffectiveTo, &s.DueAt)
 	if isNoRows(err) {
 		return s, ErrNotSignable
 	}
@@ -261,6 +279,10 @@ func (m *DocumentsModule) listPartiesHandler(w http.ResponseWriter, r *http.Requ
 	}
 	nexus.JSON(w, http.StatusOK, map[string]any{
 		"parties": parties, "mode": shape.Mode, "contract_state": shape.State,
+		"title": shape.Title, "doc_type": shape.DocType,
+		"contract_number": shape.Number, "amount": shape.Amount,
+		"currency": shape.Currency, "effective_from": shape.EffectiveFrom,
+		"effective_to": shape.EffectiveTo, "due_at": shape.DueAt,
 	})
 }
 
@@ -301,6 +323,40 @@ func (p partyRequest) validate() error {
 		strings.TrimSpace(p.RegistrationNumber) == "" {
 		return errors.New("байгууллагын регистрийн дугаарыг бичнэ үү")
 	}
+
+	// ТӨРӨЛ нь ХАЯГ. Хоёрыг салгаж болохгүй.
+	//
+	// `tenant` гэдэг нь «энэ суулгац дээрх өөр байгууллага» гэсэн үг бөгөөд
+	// АЛЬ байгууллага болохыг `counterparty_tenant_id` л хэлнэ. Түүнгүйгээр
+	// үүссэн мөр нь эвдэрсэн мэт харагддаггүй — гэрээнд тал байна, нэр нь
+	// байна, илгээгдсэн гэж бичигдэнэ — гэвч түүнд хүрэх зам байхгүй:
+	// хүлээн авагчийн жагсаалтын гурван салааны аль нь ч олохгүй, урилга нь
+	// дансгүй хүнд зориулагдсан. Хүлээн авагч гэрээгээ хэзээ ч харахгүй,
+	// гаргагч нь «илгээсэн» гэж уншсаар байна.
+	//
+	// Сан үүнийг 00006-аас хойш өөрөө барина; энд давхар шалгаж байгаа нь
+	// хэрэглэгчид ойлгомжтой хариулт өгөхийн тулд.
+	has := func(v *string) bool { return v != nil && strings.TrimSpace(*v) != "" }
+	switch p.Kind {
+	case KindMember:
+		if !has(p.MemberUserID) {
+			return errors.New("дотоод хэрэглэгчийг сонгоно уу — хэрэглэгчийн ID шаардлагатай")
+		}
+		if has(p.CounterpartyTenant) {
+			return errors.New("дотоод хэрэглэгч нь байгууллагын ID авахгүй")
+		}
+	case KindTenant:
+		if !has(p.CounterpartyTenant) {
+			return errors.New("байгууллагыг сонгоно уу — байгууллагын ID шаардлагатай")
+		}
+		if has(p.MemberUserID) {
+			return errors.New("байгууллага нь хэрэглэгчийн ID авахгүй")
+		}
+	case KindPerson, KindOrganisation:
+		if has(p.MemberUserID) || has(p.CounterpartyTenant) {
+			return errors.New("дансгүй тал нь энэ суулгацын ID авахгүй — түүнд урилгын холбоосоор хүрнэ")
+		}
+	}
 	return nil
 }
 
@@ -340,8 +396,12 @@ func (m *DocumentsModule) addPartyHandler(w http.ResponseWriter, r *http.Request
 
 	party, err := m.insertParty(r.Context(), tenantID, docID, req, actorFor(r.Context()))
 	switch {
-	case errors.Is(err, errDuplicateParty):
-		nexus.Error(w, http.StatusConflict, "энэ регистрийн дугаартай тал энэ гэрээнд аль хэдийн байна")
+	case errors.Is(err, errDuplicateParty), errors.Is(err, errDuplicateTenant),
+		errors.Is(err, errSecondIssuer):
+		nexus.Error(w, http.StatusConflict, err.Error())
+		return
+	case errors.Is(err, errSelfParty), errors.Is(err, errNoHome):
+		nexus.Error(w, http.StatusBadRequest, err.Error())
 		return
 	case err != nil:
 		nexus.Error(w, http.StatusInternalServerError, "тал бүртгэгдсэнгүй")
@@ -364,7 +424,13 @@ func (m *DocumentsModule) addPartyHandler(w http.ResponseWriter, r *http.Request
 	nexus.JSON(w, http.StatusCreated, party)
 }
 
-var errDuplicateParty = errors.New("duplicate party")
+var (
+	errDuplicateParty  = errors.New("энэ регистрийн дугаартай тал энэ гэрээнд аль хэдийн байна")
+	errDuplicateTenant = errors.New("энэ байгууллага энэ гэрээнд аль хэдийн тал болсон байна")
+	errSecondIssuer    = errors.New("гэрээ нэг гаргагчтай — өмнөх гаргагчийг эхлээд хасна уу")
+	errSelfParty       = errors.New("өөртэйгөө гэрээ байгуулах боломжгүй")
+	errNoHome          = errors.New("талын төрөл ба хаяг зөрж байна")
+)
 
 func (m *DocumentsModule) insertParty(ctx context.Context, tenantID, docID string,
 	req partyRequest, actor string) (Party, error) {
@@ -388,8 +454,24 @@ func (m *DocumentsModule) insertParty(ctx context.Context, tenantID, docID strin
 		strings.TrimSpace(req.AddressLine), strings.TrimSpace(req.ContactEmail),
 		strings.TrimSpace(req.ContactPhone),
 		req.MemberUserID, req.CounterpartyTenant, required, req.SignOrder, actor).Scan(&id)
-	if isConstraintViolation(err, "document_parties_registration_unique") {
+	// Хязгаарлалтын нэрс нь 00002/00006-д бичигдсэн ЯГ ТЭР нэрс.
+	//
+	// Урьд нь энд `document_parties_registration_unique` гэж бичигдсэн байв
+	// — сангийн индекс нь `document_parties_one_per_registration` нэртэй.
+	// Тэр үсгийн зөрүү нь давхардсан регистрийн дугаарыг «тал бүртгэгдсэнгүй»
+	// гэсэн 500 болгодог байв: хэрэглэгч юуг засахаа мэдэхгүй, ажиллуулагч
+	// сангийн эвдрэл гэж уншина.
+	switch {
+	case isConstraintViolation(err, "document_parties_one_per_registration"):
 		return Party{}, errDuplicateParty
+	case isConstraintViolation(err, "document_parties_one_per_counterparty"):
+		return Party{}, errDuplicateTenant
+	case isConstraintViolation(err, "document_parties_one_issuer"):
+		return Party{}, errSecondIssuer
+	case isCheckViolation(err, "document_parties_not_self"):
+		return Party{}, errSelfParty
+	case isCheckViolation(err, "document_parties_kind_has_a_home"):
+		return Party{}, errNoHome
 	}
 	if err != nil {
 		return Party{}, fmt.Errorf("insert party: %w", err)

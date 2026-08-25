@@ -192,15 +192,19 @@ function viewNew() {
 
 /* ═══════════════════════════════════════════ 2. ГЭРЭЭ (ГАРГАГЧИЙН НҮД) */
 
+/* Гэрээний баримтыг ТАЛУУДЫН хариултаас авна.
+ *
+ * Урьд нь гэрээний ЖАГСААЛТААС хайдаг байсан ба тэр жагсаалт нь
+ * `contract_state <> 'NONE'` гэж шүүдэг: шинэ гэрээ — тал нэмэгдэхээс өмнөх —
+ * тэнд байхгүй. Хэрэглэгч дугаараа бичиж хадгалаад хуудсаа сэргээхэд хоосон
+ * талбар хардаг байв, өөрөөр хэлбэл хадгалагдсан зүйл нь хадгалагдаагүй мэт
+ * уншигдана. Одоо талуудын хариулт өөрөө баримтуудаа авчирдаг. */
 function viewContract(id) {
   Promise.all([
     api(API + "/" + id + "/parties"),
-    api(API + "/" + id + "/body").catch(function () { return { body: "" }; }),
-    api(API + "/contracts")
+    api(API + "/" + id + "/body").catch(function () { return { body: "" }; })
   ]).then(function (r) {
-    var shape = r[0], body = r[1].body || "", meta = null;
-    (r[2].contracts || []).forEach(function (c) { if (c.id === id) meta = c; });
-    renderContract(id, shape, body, meta);
+    renderContract(id, r[0], r[1].body || "", r[0]);
   }).catch(fail);
 }
 
@@ -277,7 +281,7 @@ function sectionFacts(id, meta, editable) {
 
 /* — Гэрээний бичвэр */
 function sectionBody(id, body, editable) {
-  var area = h("textarea", { placeholder: "Гэрээний бичвэрээ энд бичнэ. {{СУРГУУЛЬ}}, {{ЗАХИРАЛ}} мэтийн орлуулга тал бүрийн хувь дээр автоматаар бөглөгдөнө." });
+  var area = h("textarea", { placeholder: "Гэрээний бичвэрээ энд бичнэ." });
   area.value = body;
   var msg = h("div", {});
   var save = h("button", { class: "ghost small", text: "Хадгалах", onclick: function () {
@@ -288,7 +292,14 @@ function sectionBody(id, body, editable) {
   } });
 
   var card = h("div", { class: "card" }, [
-    h("div", { class: "row" }, [h("h2", { class: "grow", text: "Гэрээний бичвэр" }), save])
+    h("div", { class: "row" }, [h("h2", { class: "grow", text: "Гэрээний бичвэр" }), save]),
+    /* Орлуулгууд нь ЖИЖИГ үсгээр — орлуулагч яг тэр тэмдэгт мөрийг хайдаг.
+       Урьд нь энэ мөр {{СУРГУУЛЬ}} гэж ТОМ үсгээр жишээ өгдөг байсан бөгөөд
+       тэр нь хэзээ ч орлуулагддаггүй: хэрэглэгч зааврыг дагаад, гэрээн дээрээ
+       буржгар хаалт хэвлэгдсэнийг хожим олж хардаг. */
+    h("p", { class: "hint", text:
+      "Орлуулга (жижиг үсгээр): {{тал}} {{регистр}} {{төлөөлөгч}} {{хаяг}} {{гэрээ}} {{дугаар}} {{огноо}} — " +
+      "тал бүрийн хувь дээр тэдний өөрсдийнх нь мэдээллээр бөглөгдөнө." })
   ]);
   if (!editable) {
     card.appendChild(alertBox("info",
@@ -442,6 +453,29 @@ function addPartyForm(id) {
   var order = h("input", { type: "number", min: "1", placeholder: "Дараалал (заавал биш)" });
   var msg = h("div", {});
 
+  /* ХАЯГ. Төрөл нь «хаана байгаа» гэдгийг хэлдэг тул ID-г нь заавал асууна.
+   *
+   * Урьд нь энэ талбар байхгүй байсан бөгөөд «Энэ платформ дээрх байгууллага»
+   * гэж сонгосон тал нь ХАЯГГҮЙ үүсдэг байв: гэрээнд харагдана, илгээгдсэн
+   * гэж бичигдэнэ, гэвч түүнд хүрэх зам байхгүй. Хүлээн авагч гэрээгээ хэзээ
+   * ч харахгүй, гаргагч нь илгээсэн гэж уншсаар байна. Сан үүнийг 00006-аас
+   * хойш өөрөө барина; энэ талбар нь хүнд юу дутууг хэлнэ. */
+  var home = h("input", { placeholder: "UUID" });
+  var homeRow = h("div", {}, [h("label", { text: "Байгууллагын ID" }), home]);
+  var homeHint = h("p", { class: "hint" }, []);
+  function refreshHome() {
+    var k = kind.value;
+    var need = k === "tenant" || k === "member";
+    homeRow.style.display = need ? "" : "none";
+    homeHint.style.display = need ? "" : "none";
+    homeRow.firstChild.textContent = k === "member" ? "Хэрэглэгчийн ID" : "Байгууллагын ID";
+    homeHint.textContent = k === "member"
+      ? "Энэ байгууллагын хэрэглэгчийн UUID. Гэрээ түүний «Ирсэн гэрээ» жагсаалтад орно."
+      : "Энэ суулгац дээрх байгууллагын UUID. Тэд өөрсдийн «Ирсэн гэрээ» дотроос харна.";
+  }
+  kind.addEventListener("change", refreshHome);
+  refreshHome();
+
   return h("div", { style: "margin-top:14px" }, [
     h("h3", { text: "Тал нэмэх" }),
     h("div", { class: "grid2" }, [
@@ -452,8 +486,10 @@ function addPartyForm(id) {
       h("div", {}, [h("label", { text: "И-мэйл" }), email]),
       h("div", {}, [h("label", { text: "Утас" }), phone]),
       h("div", {}, [h("label", { text: "Хаяг" }), addr]),
-      h("div", {}, [h("label", { text: "Зурах дараалал" }), order])
+      h("div", {}, [h("label", { text: "Зурах дараалал" }), order]),
+      homeRow
     ]),
+    homeHint,
     h("p", { class: "hint", text: "Дараалал бичвэл өмнөх тал зурах хүртэл дараагийнх нь зурж чадахгүй." }),
     msg,
     h("div", { class: "row", style: "margin-top:10px" }, [
@@ -465,6 +501,8 @@ function addPartyForm(id) {
           address_line: addr.value.trim()
         };
         if (order.value) payload.sign_order = Number(order.value);
+        if (kind.value === "tenant") payload.counterparty_tenant_id = home.value.trim() || null;
+        if (kind.value === "member") payload.member_user_id = home.value.trim() || null;
         api(API + "/" + id + "/parties", { method: "POST", body: JSON.stringify(payload) })
           .then(function () { viewContract(id); })
           .catch(function (e) { msg.innerHTML = ""; msg.appendChild(alertBox("err", e.message)); });

@@ -210,7 +210,23 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ГАРГАГЧГҮЙ ГЭРЭЭ ИЛГЭЭГДЭХГҮЙ.
+	//
+	// `issuerOf` нь гаргагч олдохгүй бол ХООСОН тал буцаадаг ба урьд нь
+	// илгээлт түүнтэйгээ үргэлжилдэг байв. Үр дүн нь хоёр газарт худал:
+	// `freezeFor` нь «Захиалагч» гэсэн гарын үсгийн блокийг ОРХИНО — хэн
+	// гаргасан нь бичигдээгүй гэрээ хэвлэгдэнэ — ба хүлээн авагчийн
+	// жагсаалтад илгээгчийн нэр хоосон харагдана.
+	//
+	// Хууль зүйн баримт дээр «хэнтэй» гэдэг нь чимээгүй орхигдож болох
+	// талбар биш. Илгээхээс өмнө татгалзах нь хожим тэр гэрээг хүчингүй
+	// болгохоос хямд.
 	issuer := issuerOf(parties)
+	if issuer.ID == "" {
+		nexus.Error(w, http.StatusConflict,
+			"гэрээнд гаргагч талыг нэрлээгүй байна — «Гаргагч (бид)» үүрэгтэй тал нэмнэ үү")
+		return
+	}
 	sent := 0
 	skips := []sendSkip{}
 	for _, p := range parties {
@@ -221,16 +237,27 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 		if p.Role == RoleIssuer {
 			continue
 		}
-		if p.State == PartySigned || p.State == PartyDeclined {
-			skips = append(skips, sendSkip{p.ID, p.DisplayName, "аль хэдийн шийдвэрээ өгсөн"})
+		if p.State == PartySigned || p.State == PartyDeclined ||
+			p.State == PartyWithdrawn || p.State == PartyExpired {
+			// Эргүүлж татсан ба хугацаа дууссан тал нь «хараахан хариу
+			// өгөөгүй» биш, ХААГДСАН. Хуучин жагсаалт тэднийг дахин
+			// илгээгддэг гэж уншдаг байсан ба `storePartyCopy` нь төлвийг
+			// нь хөдөлгөж чаддаггүй тул хөлдсөн хувь нь шинэчлэгдээд
+			// төлөв нь хаалттай хэвээр үлдэх байв.
+			skips = append(skips, sendSkip{p.ID, p.DisplayName, "энэ тал хаагдсан"})
 			continue
 		}
-		// Өөр байгууллагын тал өөрсдөө гарын үсэг зурагчаа нэрлэнэ — тэднийг
-		// эрх бүхий хүнгүй гэж алгасахгүй.
-		if len(p.Signatories) == 0 && p.CounterpartyTenant == nil {
-			skips = append(skips, sendSkip{p.ID, p.DisplayName, ErrNoSignatory.Error()})
-			continue
-		}
+		// ГАРЫН ҮСЭГ ЗУРАГЧГҮЙ ТАЛЫГ АЛГАСАХГҮЙ.
+		//
+		// Урьд нь энд «эрх бүхий хүн бүртгэгдээгүй» гэж алгасдаг байсан
+		// бөгөөд тэр нь дансгүй байгууллага руу илгээх бүхэл замыг ХААДАГ
+		// байв: тэд гэрээгээ хүлээж авмагц ӨӨРСДӨӨ гарын үсэг зурагчаа
+		// нэрлэдэг (`invite.go`-ийн `may_nominate`), гэвч нэрлэхийн тулд
+		// эхлээд хүлээж авах ёстой. Алгасалт нь тэр эхний алхмыг зөвшөөрдөггүй
+		// байсан тул хоёр дахь нь хэзээ ч ирэхгүй.
+		//
+		// Хэн зурахыг нэрлээгүй байх нь ИЛГЭЭХЭД саад биш, ЁСЛОЛД саад:
+		// `signerFor` нь тэр агшинд ErrNoSignatory буцаана.
 
 		text, pdf, sum, err := m.freezeFor(r.Context(), tenantID, docID, shape, issuer, p, body)
 		if err != nil {
