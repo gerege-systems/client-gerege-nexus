@@ -277,12 +277,32 @@ func (m *DocumentsModule) listPartiesHandler(w http.ResponseWriter, r *http.Requ
 		nexus.Error(w, http.StatusInternalServerError, "талууд уншигдсангүй")
 		return
 	}
+	// Хавсралтын байдал — дэлгэц «PDF байна уу, гаргагч зурсан уу» гэдгийг
+	// нэг ачаалалтаар мэдэх ёстой: тусдаа дуудлага нь тусдаа уналт.
+	var attachment map[string]any
+	{
+		var name string
+		var size int64
+		var signed bool
+		err := m.db.QueryRow(r.Context(),
+			`SELECT file_name, size_bytes, signed_content IS NOT NULL
+			   FROM document_files WHERE document_id = $1 AND tenant_id = $2`,
+			docID, tenantID).Scan(&name, &size, &signed)
+		if err == nil {
+			attachment = map[string]any{"file_name": name, "size_bytes": size, "master_signed": signed}
+		} else if !isNoRows(err) {
+			nexus.Error(w, http.StatusInternalServerError, "хавсралт уншигдсангүй")
+			return
+		}
+	}
+
 	nexus.JSON(w, http.StatusOK, map[string]any{
 		"parties": parties, "mode": shape.Mode, "contract_state": shape.State,
 		"title": shape.Title, "doc_type": shape.DocType,
 		"contract_number": shape.Number, "amount": shape.Amount,
 		"currency": shape.Currency, "effective_from": shape.EffectiveFrom,
 		"effective_to": shape.EffectiveTo, "due_at": shape.DueAt,
+		"attachment": attachment,
 	})
 }
 

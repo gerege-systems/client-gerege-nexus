@@ -340,6 +340,11 @@ func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 		{ID: "documents.pdf", ParentID: "operations", Label: "PDF signing", Path: "/module/documents/pdf", Icon: "pen-tool", Order: 34, Labels: map[string]string{"mn": "PDF гарын үсэг", "ar": "توقيع PDF", "zh": "PDF 签名", "fr": "Signature PDF", "ru": "Подпись PDF", "es": "Firma de PDF"}},
 		{ID: "documents.batch", ParentID: "operations", Label: "Batch signing", Path: "/module/documents/batch", Icon: "layers", Order: 35, Labels: map[string]string{"mn": "Багц гарын үсэг", "ar": "توقيع دفعي", "zh": "批量签名", "fr": "Signature par lot", "ru": "Пакетная подпись", "es": "Firma por lotes"}},
 		{ID: "documents.logs", ParentID: "operations", Label: "Signature log", Path: "/module/documents/logs", Icon: "activity", Order: 36, Labels: map[string]string{"mn": "Гарын үсгийн лог", "ar": "سجل التوقيعات", "zh": "签名日志", "fr": "Journal des signatures", "ru": "Журнал подписей", "es": "Registro de firmas"}},
+		// Тайлан руу энэ аппын дотроос хүрэх хаалга. Дэлгэц нь платформын
+		// нэгдсэн /reports — энэ модулийн RegisterReport-оор зарласан таван
+		// тайлан тэнд өөрийн группээрээ гарна (гэрээний бүртгэл, хүлээгдэж
+		// буй гарын үсэг, гарын үсгийн бүртгэл, урсгал, дуусах гэрээ).
+		{ID: "documents.reports", ParentID: "operations", Label: "Reports", Path: "/reports", Icon: "bar-chart-3", Order: 37, Labels: map[string]string{"mn": "Тайлан", "ar": "التقارير", "zh": "报表", "fr": "Rapports", "ru": "Отчёты", "es": "Informes"}},
 
 		// ТОХИРГОО. Цэсний Тохиргоо группыг платформ өөрөө нээдэг боловч
 		// v1.13.0-д түүнийг зөвхөн цөмийн blueprint дүүргэдэг байсан — гарсан
@@ -451,6 +456,10 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 
 			pr.With(read).Get("/{id}/parties", m.listPartiesHandler)
 			pr.With(parties).Post("/{id}/parties", m.addPartyHandler)
+			// Олон хүлээн авагч нэг файлаар — import.go. Биеийн хязгаар нь
+			// JSON-ийнхоос том: Excel файл ирнэ.
+			pr.With(parties, limitBodyTo(importBodyLimit)).Post("/{id}/parties/import", m.importPartiesHandler)
+			pr.With(read).Get("/parties/import-template.xlsx", m.importTemplateHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
 			pr.With(parties).Post("/{id}/parties/{pid}/signatories", m.addSignatoryHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}/signatories/{sid}", m.removeSignatoryHandler)

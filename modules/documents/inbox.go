@@ -31,6 +31,7 @@
 package documents
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -60,19 +61,49 @@ type inboxItem struct {
 
 // inboxScope нь «энэ хүн юунд хүрч болох вэ» гэдгийн SQL хэлбэр.
 //
-// Гурван замыг НЭГ предикатад барина: аль нэгийг мартвал зарим хүлээн авагч
+// ДӨРВӨН замыг НЭГ предикатад барина: аль нэгийг мартвал зарим хүлээн авагч
 // өөрийн гэрээгээ олохгүй, эсвэл өөр хүний гэрээг олно. Тиймээс нэг л газарт
 // бичигдэж, хүрэх эрх шалгадаг бүх query түүнийг хуваана.
 //
-// $1 = идэвхтэй байгууллага, $2 = нэвтэрсэн хэрэглэгч. Сангийн RLS нь үүний
-// ард зогсох ба хоёулаа зөрвөл мөр буцахгүй — энэ предикат бол зорилго,
-// бодлого бол баталгаа.
+// $1 = идэвхтэй байгууллага, $2 = нэвтэрсэн хэрэглэгч, $3 = нэвтэрсэн хүний
+// eID-д холбогдсон РЕГИСТРИЙН ДУГААР (байхгүй бол хоосон).
+//
+// Дөрөв дэх зам нь энэ платформын гол үнэн дээр тогтдог: гэрээ нь РЕГИСТРИЙН
+// ДУГААРТ хаяглагддаг (PIN2 тийш очдог), хүн нь eID-ээрээ яг тэр дугаараа
+// НОТОЛЖ нэвтэрдэг. Тиймээс гаргагч урьдчилж данс мэдэх шаардлагагүй:
+// дугаараа бичээд илгээхэд, тэр дугаарын эзэн eID-ээр орж ирмэгц гэрээгээ
+// олно. Данс хэзээ үүссэн нь хамаагүй — илгээснээс өмнө ч, хойно ч.
+//
+// Сангийн RLS нь үүний ард зогсох ба зөрвөл мөр буцахгүй — энэ предикат бол
+// зорилго, бодлого бол баталгаа.
 const inboxScope = `(
      p.counterparty_tenant_id = $1
   OR p.member_user_id = NULLIF($2,'')::uuid
   OR EXISTS (SELECT 1 FROM document_party_signatories g
               WHERE g.party_id = p.id AND g.user_id = NULLIF($2,'')::uuid)
+  OR (NULLIF($3,'') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM document_party_signatories g
+         WHERE g.party_id = p.id AND upper(g.reg_number) = upper($3)))
 )`
+
+// eidRegOf нь нэвтэрсэн хүний eID-д холбогдсон регистрийн дугаар, эсвэл хоосон.
+//
+// `user_eid_identities` бол цөмийн хүснэгт бөгөөд RLS-гүй, `gerege_nexus_app`
+// нь SELECT эрхтэй (00037-ийн grant) — тиймээс энэ асуулт tenant-ийн
+// холболтын дор чөлөөтэй ажиллана. Алдаа нь хоосон гэж уншигдана: eID
+// холбоогүй хүн бол ердийн төлөв, түүнд эхний гурван зам үлдэнэ.
+func (m *DocumentsModule) eidRegOf(ctx context.Context, userID string) string {
+	if userID == "" {
+		return ""
+	}
+	var reg string
+	if err := m.db.QueryRow(ctx,
+		`SELECT COALESCE(reg_number, '') FROM user_eid_identities WHERE user_id = $1`,
+		userID).Scan(&reg); err != nil {
+		return ""
+	}
+	return reg
+}
 
 // inboxOpenStates нь «миний хариу хүлээж буй» гэдгийн тодорхойлолт.
 var inboxOpenStates = []string{PartyInvited, PartyViewed}
@@ -113,9 +144,9 @@ func (m *DocumentsModule) inboxHandler(w http.ResponseWriter, r *http.Request) {
 		   FROM document_parties p
 		   LEFT JOIN document_parties i
 		          ON i.document_id = p.document_id AND i.party_role = 'issuer'
-		  WHERE `+inboxScope+` AND p.party_role <> 'issuer' AND p.state = ANY($3)
+		  WHERE `+inboxScope+` AND p.party_role <> 'issuer' AND p.state = ANY($4)
 		  ORDER BY p.invited_at DESC NULLS LAST, p.id`,
-		tenantID, claims.UserID, states)
+		tenantID, claims.UserID, m.eidRegOf(r.Context(), claims.UserID), states)
 	if err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "жагсаалт уншигдсангүй")
 		return
@@ -167,8 +198,8 @@ func (m *DocumentsModule) reachInbox(r *http.Request, tenantID, partyID string) 
 	err = m.db.QueryRow(r.Context(),
 		`SELECT p.id, p.document_id, p.tenant_id::text, p.state, p.doc_title, p.doc_type, p.required
 		   FROM document_parties p
-		  WHERE p.id = $3 AND p.party_role <> 'issuer' AND `+inboxScope,
-		tenantID, claims.UserID, partyID).
+		  WHERE p.id = $4 AND p.party_role <> 'issuer' AND `+inboxScope,
+		tenantID, claims.UserID, m.eidRegOf(r.Context(), claims.UserID), partyID).
 		Scan(&v.ID, &v.DocID, &v.Owner, &v.State, &v.Title, &v.DocType, &v.Required)
 	if err != nil {
 		return v, false

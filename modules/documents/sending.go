@@ -31,6 +31,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
+
+	domain "github.com/gerege-systems/client-gerege-nexus/domain/documents"
 )
 
 // maxBodyChars нь гэрээний бичвэрийн дээд урт.
@@ -166,8 +168,23 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 		nexus.Error(w, http.StatusInternalServerError, "бичвэр уншигдсангүй")
 		return
 	}
-	if strings.TrimSpace(body) == "" {
-		nexus.Error(w, http.StatusConflict, "гэрээний бичвэр хоосон байна")
+
+	// ГЭРЭЭ ХОЁР ХЭЛБЭРТЭЙ: бичсэн бичвэр эсвэл ХАВСАРГАСАН PDF.
+	//
+	// Хавсаргасан PDF байвал тал бүрийн хөлдсөн хувь нь ЯГ ТЭР ФАЙЛ —
+	// гаргагч аль хэдийн PIN2-оор зурсан бол гарын үсэгтэй хувь нь.
+	// Ингэснээр захирал бүрийн зурах байт нь гаргагчийн гарын үсгийг
+	// ХАМАРНА: тэд «гаргагч ийм гарын үсэг зурсныг» баталж байгаа юм.
+	// Орлуулга энэ замд ажиллахгүй нь ойлгомжтой — файл гаргагчийн
+	// бэлдсэн хэвээрээ очно.
+	master, err := m.attachedMaster(r.Context(), tenantID, docID)
+	if err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "хавсралт уншигдсангүй")
+		return
+	}
+	if master == nil && strings.TrimSpace(body) == "" {
+		nexus.Error(w, http.StatusConflict,
+			"гэрээний бичвэр бичээгүй, PDF ч хавсаргаагүй байна — аль нэгийг нь өгнө үү")
 		return
 	}
 
@@ -259,12 +276,27 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 		// Хэн зурахыг нэрлээгүй байх нь ИЛГЭЭХЭД саад биш, ЁСЛОЛД саад:
 		// `signerFor` нь тэр агшинд ErrNoSignatory буцаана.
 
-		text, pdf, sum, err := m.freezeFor(r.Context(), tenantID, docID, shape, issuer, p, body)
-		if err != nil {
-			skips = append(skips, sendSkip{p.ID, p.DisplayName, err.Error()})
-			continue
+		var text string
+		var pdf []byte
+		var sum, name string
+		if master != nil {
+			// Хавсаргасан мастер: тал бүр ИЖИЛ байт авна. Бичвэр байвал
+			// орлуулгатайгаар хадгална — дэлгэц PDF-ийн хажууд харуулж
+			// болно — гэхдээ гарын үсгийн хамрах зүйл нь ФАЙЛ.
+			if strings.TrimSpace(body) != "" {
+				text, _, _, _ = m.freezeTextFor(shape, issuer, p, body)
+			}
+			pdf, sum, name = master.PDF, domain.Digest(master.PDF), master.FileName
+		} else {
+			var err error
+			text, pdf, sum, err = m.freezeFor(r.Context(), tenantID, docID, shape, issuer, p, body)
+			if err != nil {
+				skips = append(skips, sendSkip{p.ID, p.DisplayName, err.Error()})
+				continue
+			}
+			name = fileName(p.RegistrationNumber, "contract")
 		}
-		if err := m.storePartyCopy(r.Context(), tenantID, docID, p, text, pdf, sum); err != nil {
+		if err := m.storePartyCopy(r.Context(), tenantID, docID, p, name, text, pdf, sum); err != nil {
 			nexus.Error(w, http.StatusInternalServerError, "хүргэлт хадгалагдсангүй")
 			return
 		}
@@ -284,6 +316,51 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 	nexus.Audit(r.Context(), tenantID, actorFor(r.Context()), "documents.contract_sent", docID,
 		map[string]any{"sent": sent, "skipped": len(skips), "mode": req.Mode})
 	nexus.JSON(w, http.StatusOK, map[string]any{"sent": sent, "skipped": skips})
+}
+
+// attachedFile нь илгээлтийн мастер болох хавсралт.
+type attachedFile struct {
+	FileName string
+	PDF      []byte
+}
+
+// attachedMaster нь баримтын хавсралтыг уншина — ГАРЫН ҮСЭГТЭЙ хувь нь
+// байвал түүнийг: тал бүрийн зурах байт гаргагчийн гарын үсгийг хамрах
+// ёстой. Хавсралтгүй бол nil, nil — бичвэрээс зурах зам хэвээр.
+func (m *DocumentsModule) attachedMaster(ctx context.Context, tenantID, docID string) (*attachedFile, error) {
+	var name string
+	var content, signed []byte
+	err := m.db.QueryRow(ctx,
+		`SELECT file_name, content, signed_content FROM document_files
+		  WHERE document_id = $1 AND tenant_id = $2`, docID, tenantID).
+		Scan(&name, &content, &signed)
+	if isNoRows(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(signed) > 0 {
+		return &attachedFile{FileName: name, PDF: signed}, nil
+	}
+	if len(content) > 0 {
+		return &attachedFile{FileName: name, PDF: content}, nil
+	}
+	return nil, nil
+}
+
+// freezeTextFor нь зөвхөн бичвэрийн орлуулгыг хийнэ — PDF зурахгүй.
+func (m *DocumentsModule) freezeTextFor(shape contractShape, issuer, p Party, body string) (string, Fields, []SignatureBlock, error) {
+	f := Fields{
+		SchoolName:   p.DisplayName,
+		SchoolCode:   p.RegistrationNumber,
+		Aimag:        p.AddressLine,
+		Principal:    signatoryName(p),
+		ContractCode: shape.Number,
+		Title:        shape.Title,
+		Date:         time.Now(),
+	}
+	return Substitute(body, f), f, nil, nil
 }
 
 func issuerOf(parties []Party) Party {
@@ -361,7 +438,7 @@ func firstNonEmpty(values ...string) string {
 // Гарын үсэг зурагдсан хувийг ХӨНДӨХГҮЙ: зурагдсан бичвэрийг дарж бичих нь
 // гарын үсгийг өөр баримт дээр буулгана.
 func (m *DocumentsModule) storePartyCopy(ctx context.Context, tenantID, docID string,
-	p Party, text string, pdf []byte, sum string) error {
+	p Party, name, text string, pdf []byte, sum string) error {
 
 	tx, err := m.db.Begin(ctx)
 	if err != nil {
@@ -393,7 +470,7 @@ func (m *DocumentsModule) storePartyCopy(ctx context.Context, tenantID, docID st
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (party_id) DO NOTHING`,
 		p.ID, tenantID, p.CounterpartyTenant, docID,
-		fileName(p.RegistrationNumber, "contract"), len(pdf), sum, pdf, text); err != nil {
+		name, len(pdf), sum, pdf, text); err != nil {
 		return fmt.Errorf("freeze the party copy: %w", err)
 	}
 
