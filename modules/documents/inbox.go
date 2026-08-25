@@ -246,7 +246,7 @@ func (m *DocumentsModule) inboxShowHandler(w http.ResponseWriter, r *http.Reques
 	nexus.JSON(w, http.StatusOK, map[string]any{
 		"party_id": party.ID, "document_id": party.DocID,
 		"title": party.Title, "doc_type": party.DocType, "state": state,
-		"required": party.Required,
+		"required":  party.Required,
 		"body_text": bodyText, "sha256": sha, "frozen_at": frozenAt,
 		"has_copy": sha != "",
 		"parties":  others, "my_signatories": mine,

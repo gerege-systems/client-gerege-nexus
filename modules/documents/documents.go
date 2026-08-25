@@ -246,6 +246,10 @@ func New(p nexus.Platform, signer nexus.Signer) *DocumentsModule {
 	// constructs this module gets it too, and one that does not gets the
 	// honest ErrNoDocumentFiler.
 	nexus.Provide[nexus.DocumentFiler](filer{m})
+	// Гэрээний тайлангууд. Байгуулагчаас — модуль өөрийгөө бүртгэдэгтэй яг
+	// адил: тайлан нь хөтөлбөрийн эхлэлийн дараалалд биш, модулийн оршихуйд
+	// холбогдоно (`RegisterReport` нь хүлээн авагч ирээгүй бол хадгална).
+	registerReports()
 	return m
 }
 

@@ -143,6 +143,16 @@ END;
 $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
+-- ═══════════════════════════════════════ 2а. «гэрээ мөн үү» гэдгийн индекс
+--
+-- 00002 нь `signing_mode <> 'internal'` дээр хэсэгчилсэн индекс тавьсан
+-- боловч тэр багана нь ИЛГЭЭХ агшинд бичигддэг. Гэрээний бүртгэл нь
+-- илгээгээгүй гэрээг ч агуулах ёстой тул тайлангууд `contract_state`-аар
+-- асуудаг — тэр нь анхны тал нэмэгдэхэд NONE-оос DRAFT болно.
+CREATE INDEX IF NOT EXISTS idx_document_records_is_a_contract
+    ON document_records (tenant_id, contract_state, created_at DESC)
+    WHERE contract_state <> 'NONE';
+
 -- ═══════════════════════════════════════ 3. ёслол ба гарын үсэг хоёр талтай болов
 
 ALTER TABLE document_eid_sign_sessions
@@ -259,6 +269,7 @@ DROP FUNCTION IF EXISTS documents_party_scope_optional();
 ALTER TABLE document_signatures DROP COLUMN IF EXISTS counterparty_tenant_id;
 ALTER TABLE document_eid_sign_sessions
     DROP COLUMN IF EXISTS counterparty_tenant_id, DROP COLUMN IF EXISTS party_id;
+DROP INDEX IF EXISTS idx_document_records_is_a_contract;
 DROP TRIGGER IF EXISTS documents_parties_denormalise ON document_parties;
 DROP FUNCTION IF EXISTS documents_party_denormalise();
 
