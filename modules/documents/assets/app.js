@@ -500,13 +500,38 @@ function sectionSend(id, parties, state, mode) {
       .catch(function (e) { send.disabled = false; msg.innerHTML = ""; msg.appendChild(alertBox("err", e.message)); });
   } });
 
-  return h("div", { class: "card" }, [
+  var actions = h("div", { class: "row", style: "margin-top:12px" }, [send]);
+
+  /* Эргүүлж татах ба дахин нээх. Хүчин төгөлдөр гэрээг эргүүлж татахгүй:
+     талууд гарын үсгээ зурсан бол тэр нь баримт болсон. */
+  if (state === "SENT" || state === "PARTIALLY_SIGNED" || state === "DECLINED") {
+    actions.appendChild(h("button", { class: "danger", text: "Эргүүлж татах", onclick: function () {
+      var reason = window.prompt("Эргүүлж татах шалтгаан (заавал биш):") || "";
+      api(API + "/" + id + "/withdraw", { method: "POST", body: JSON.stringify({ reason: reason }) })
+        .then(function () { viewContract(id); })
+        .catch(function (e) { msg.innerHTML = ""; msg.appendChild(alertBox("err", e.message)); });
+    } }));
+  }
+  if (state === "WITHDRAWN") {
+    actions.appendChild(h("button", { class: "ghost", text: "Дахин нээх", onclick: function () {
+      api(API + "/" + id + "/reopen", { method: "POST", body: "{}" })
+        .then(function () { viewContract(id); })
+        .catch(function (e) { msg.innerHTML = ""; msg.appendChild(alertBox("err", e.message)); });
+    } }));
+  }
+
+  var card = h("div", { class: "card" }, [
     h("h2", { text: "Илгээх" }),
     h("p", { class: "muted", text: "Илгээх агшинд тал бүрийн PDF зурагдаж ХӨЛДӨНӨ. Тэд яг тэр байтад гарын үсэг зурна." }),
     h("label", { text: "Гарын үсгийн горим" }), modeSel,
-    msg,
-    h("div", { class: "row", style: "margin-top:12px" }, [send])
+    msg, actions
   ]);
+  if (state === "WITHDRAWN") {
+    card.insertBefore(alertBox("wait",
+      "Энэ гэрээ эргүүлж татагдсан: холбоосууд нь унтарсан, хариу өгөөгүй талууд хаагдсан. " +
+      "«Дахин нээх» нь ноорог болгож буцаах ба хөлдсөн хувиудыг устгана."), card.childNodes[1]);
+  }
+  return card;
 }
 
 /* ═══════════════════════════════════════════ 3. ИРСЭН ГЭРЭЭ */

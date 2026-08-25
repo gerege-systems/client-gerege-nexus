@@ -437,3 +437,163 @@ func writePDF(w http.ResponseWriter, name string, b []byte) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(b)
 }
+
+// ─────────────────────────────────────────────── эргүүлж татах ба дахин нээх
+//
+// Эрхийн тодорхойлолт `documents.send`-ийг «илгээх, дахин илгээх, эргүүлж
+// татах, дахин нээх» гэж нэрлэдэг байсан ч сүүлийн хоёр нь БАЙГААГҮЙ.
+// Зарласан эрх нь байхгүй үйлдлийг нэрлэх нь эрхийг уншиж шийдвэр гаргаж буй
+// админд худал хэлсэн хэрэг.
+
+var (
+	// ErrAlreadyExecuted — хүчин төгөлдөр болсон гэрээг эргүүлж татахгүй.
+	// Талууд гарын үсгээ зурсан бол тэр нь баримт болсон; түүнийг зогсоох
+	// зам нь ЦУЦЛАХ (terminate), нуух биш.
+	ErrAlreadyExecuted = errors.New("энэ гэрээ хүчин төгөлдөр болсон — эргүүлж татахын оронд цуцална")
+	ErrNotWithdrawn    = errors.New("зөвхөн эргүүлж татсан гэрээг дахин нээнэ")
+)
+
+// withdrawHandler нь илгээсэн гэрээг буцаана.
+//
+// ГАРЫН ҮСЭГ ЗУРСАН ТАЛЫГ ХӨНДӨХГҮЙ. Тэдний гарын үсэг бол болсон явдал:
+// «withdrawn» гэж дарж бичих нь бүртгэлийг худал болгоно. Зөвхөн хариу
+// өгөөгүй тал л хаагдана, ба тэдний холбоос унтарна.
+func (m *DocumentsModule) withdrawHandler(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := nexus.RequireTenant(w, r)
+	if !ok {
+		return
+	}
+	docID := chi.URLParam(r, "id")
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	reason := strings.TrimSpace(req.Reason)
+
+	shape, err := m.contractShapeOf(r.Context(), m.db, tenantID, docID)
+	if err != nil {
+		nexus.Error(w, http.StatusNotFound, "гэрээ олдсонгүй")
+		return
+	}
+	if shape.State == ContractExecuted {
+		nexus.Error(w, http.StatusConflict, ErrAlreadyExecuted.Error())
+		return
+	}
+
+	tx, err := m.db.Begin(r.Context())
+	if err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "эргүүлж татагдсангүй")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE document_parties
+		    SET state = 'withdrawn', withdrawn_at = NOW(),
+		        session_id = NULL, session_at = NULL, session_signatory_id = NULL,
+		        updated_at = NOW()
+		  WHERE document_id = $1 AND tenant_id = $2
+		    AND party_role <> 'issuer'
+		    AND state IN ('draft','invited','viewed')`, docID, tenantID); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "талууд хаагдсангүй")
+		return
+	}
+	// Амьд холбоос үлдвэл эргүүлж татсан гэрээ уншигдсаар байна.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE document_invitations SET revoked_at = NOW()
+		  WHERE document_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
+		docID, tenantID); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "холбоосууд хаагдсангүй")
+		return
+	}
+	if _, err := tx.Exec(r.Context(),
+		`INSERT INTO document_party_events (tenant_id, party_id, document_id, kind, actor_user_id, detail)
+		 SELECT $2, p.id, $1, 'withdrawn', NULLIF($3,'')::uuid, $4
+		   FROM document_parties p
+		  WHERE p.document_id = $1 AND p.tenant_id = $2 AND p.state = 'withdrawn'`,
+		docID, tenantID, actorFor(r.Context()), reason); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "түүх бичигдсэнгүй")
+		return
+	}
+	// ХАМГИЙН СҮҮЛД: талуудын trigger нь энэ баганыг дахин тоолдог тул
+	// эцсийн үг нь эндхийнх байх ёстой.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE document_records
+		    SET contract_state = $3, withdrawn_at = NOW()
+		  WHERE id = $1 AND tenant_id = $2`, docID, tenantID, ContractWithdrawn); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "гэрээний төлөв шинэчлэгдсэнгүй")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "эргүүлж татагдсангүй")
+		return
+	}
+	nexus.Audit(r.Context(), tenantID, actorFor(r.Context()), "documents.contract_withdrawn", docID,
+		map[string]any{"reason": reason})
+	nexus.JSON(w, http.StatusOK, map[string]any{"contract_state": ContractWithdrawn})
+}
+
+// reopenHandler нь эргүүлж татсан гэрээг ноорог болгож буцаана.
+//
+// ХӨЛДСӨН ХУВИЙГ УСТГАНА. Дахин нээсэн гэрээ засагдана; хуучин байт үлдвэл
+// дараагийн илгээлт «аль хэдийн хүргэгдсэн» гэж уншигдаад ХУУЧИН бичвэрийг
+// шинэ талд өгнө.
+func (m *DocumentsModule) reopenHandler(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := nexus.RequireTenant(w, r)
+	if !ok {
+		return
+	}
+	docID := chi.URLParam(r, "id")
+
+	shape, err := m.contractShapeOf(r.Context(), m.db, tenantID, docID)
+	if err != nil {
+		nexus.Error(w, http.StatusNotFound, "гэрээ олдсонгүй")
+		return
+	}
+	if shape.State != ContractWithdrawn {
+		nexus.Error(w, http.StatusConflict, ErrNotWithdrawn.Error())
+		return
+	}
+
+	tx, err := m.db.Begin(r.Context())
+	if err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "дахин нээгдсэнгүй")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	// Гарын үсэг зурсан ба татгалзсан талыг ХӨНДӨХГҮЙ: аль аль нь болсон
+	// явдал. Зөвхөн хаагдсан талууд ноорог болно.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE document_parties
+		    SET state = 'draft', withdrawn_at = NULL, invited_at = NULL, viewed_at = NULL,
+		        updated_at = NOW()
+		  WHERE document_id = $1 AND tenant_id = $2 AND state = 'withdrawn'`,
+		docID, tenantID); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "талууд нээгдсэнгүй")
+		return
+	}
+	if _, err := tx.Exec(r.Context(),
+		`DELETE FROM document_party_files f
+		  USING document_parties p
+		  WHERE p.id = f.party_id AND p.document_id = $1 AND p.tenant_id = $2
+		    AND p.state = 'draft' AND f.signed_content IS NULL`,
+		docID, tenantID); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "хөлдсөн хувь цэвэрлэгдсэнгүй")
+		return
+	}
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE document_records
+		    SET contract_state = $3, withdrawn_at = NULL, sent_at = NULL
+		  WHERE id = $1 AND tenant_id = $2`, docID, tenantID, ContractDraft); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "гэрээний төлөв шинэчлэгдсэнгүй")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "дахин нээгдсэнгүй")
+		return
+	}
+	nexus.Audit(r.Context(), tenantID, actorFor(r.Context()), "documents.contract_reopened", docID, nil)
+	nexus.JSON(w, http.StatusOK, map[string]any{"contract_state": ContractDraft})
+}

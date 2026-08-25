@@ -450,6 +450,8 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 
 			// Илгээх: тал бүрийн PDF энд зурагдаж ХӨЛДӨНӨ.
 			pr.With(send).Post("/{id}/send", m.sendHandler)
+			pr.With(send).Post("/{id}/withdraw", m.withdrawHandler)
+			pr.With(send).Post("/{id}/reopen", m.reopenHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/signed.pdf", m.partySignedCopyHandler)
 
