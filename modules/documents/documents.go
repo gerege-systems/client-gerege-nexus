@@ -334,8 +334,24 @@ func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 		// эдгээр нь backend-ийн үйлчилдэг тусдаа хуудас байсан бөгөөд
 		// `ExternalURL`-ээр нээгддэг байв: хэрэглэгч аппаас ГАРЧ өөр
 		// харагдацтай хуудсанд очдог — аппын дэлгэц апп дотроо байх ёстой.
-		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", Path: "/module/documents/contracts", Icon: "file-signature", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
+		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", Path: "/module/documents/contracts", Icon: "scroll-text", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
 		{ID: "documents.inbox", ParentID: "operations", Label: "Incoming contracts", Path: "/module/documents/inbox", Icon: "inbox", Order: 32, Labels: map[string]string{"mn": "Ирсэн гэрээ", "ar": "العقود الواردة", "zh": "收到的合同", "fr": "Contrats reçus", "ru": "Входящие договоры", "es": "Contratos recibidos"}},
+		{ID: "documents.approvals", ParentID: "operations", Label: "Approval queue", Path: "/module/documents/approvals", Icon: "list-checks", Order: 33, Labels: map[string]string{"mn": "Батлах дараалал", "ar": "قائمة الموافقات", "zh": "审批队列", "fr": "File d'approbation", "ru": "Очередь согласования", "es": "Cola de aprobación"}},
+		{ID: "documents.pdf", ParentID: "operations", Label: "PDF signing", Path: "/module/documents/pdf", Icon: "pen-tool", Order: 34, Labels: map[string]string{"mn": "PDF гарын үсэг", "ar": "توقيع PDF", "zh": "PDF 签名", "fr": "Signature PDF", "ru": "Подпись PDF", "es": "Firma de PDF"}},
+		{ID: "documents.batch", ParentID: "operations", Label: "Batch signing", Path: "/module/documents/batch", Icon: "layers", Order: 35, Labels: map[string]string{"mn": "Багц гарын үсэг", "ar": "توقيع دفعي", "zh": "批量签名", "fr": "Signature par lot", "ru": "Пакетная подпись", "es": "Firma por lotes"}},
+		{ID: "documents.logs", ParentID: "operations", Label: "Signature log", Path: "/module/documents/logs", Icon: "activity", Order: 36, Labels: map[string]string{"mn": "Гарын үсгийн лог", "ar": "سجل التوقيعات", "zh": "签名日志", "fr": "Journal des signatures", "ru": "Журнал подписей", "es": "Registro de firmas"}},
+
+		// ТОХИРГОО. Цэсний Тохиргоо группыг платформ өөрөө нээдэг боловч
+		// v1.13.0-д түүнийг зөвхөн цөмийн blueprint дүүргэдэг байсан — гарсан
+		// аппад blueprint байхгүй тул групп нь хоосон зогсдог байв. Модуль
+		// аль дэлгэц нь ТОХИРГОО болохоо id-гаараа хэлнэ: бүрхүүл `.settings.`
+		// агуулсан id-г Тохиргоо группд нь байрлуулна.
+		{ID: "documents.settings.templates", ParentID: "operations", Label: "Templates", Path: "/module/documents/templates", Icon: "files", Order: 10, Labels: map[string]string{"mn": "Загвар", "ar": "القوالب", "zh": "模板", "fr": "Modèles", "ru": "Шаблоны", "es": "Plantillas"}},
+		{ID: "documents.settings.workflows", ParentID: "operations", Label: "Approval chains", Path: "/module/documents/workflows", Icon: "workflow", Order: 20, Labels: map[string]string{"mn": "Батлах алхам", "ar": "سلاسل الموافقة", "zh": "审批链", "fr": "Circuits d'approbation", "ru": "Цепочки согласования", "es": "Cadenas de aprobación"}},
+		{ID: "documents.settings.signatures", ParentID: "operations", Label: "Signature policies", Path: "/module/documents/signatures", Icon: "shield-check", Order: 30, Labels: map[string]string{"mn": "Гарын үсгийн бодлого", "ar": "سياسات التوقيع", "zh": "签名策略", "fr": "Politiques de signature", "ru": "Политики подписи", "es": "Políticas de firma"}},
+		{ID: "documents.settings.rails", ParentID: "operations", Label: "Signing rails", Path: "/module/documents/rails", Icon: "server-cog", Order: 40, Labels: map[string]string{"mn": "Гарын үсгийн рельс", "ar": "قنوات التوقيع", "zh": "签名通道", "fr": "Canaux de signature", "ru": "Каналы подписи", "es": "Canales de firma"}},
+		{ID: "documents.settings.placement", ParentID: "operations", Label: "Stamp placement", Path: "/module/documents/placement", Icon: "move", Order: 50, Labels: map[string]string{"mn": "Дардасны байрлал", "ar": "موضع الختم", "zh": "印章位置", "fr": "Position du cachet", "ru": "Положение штампа", "es": "Posición del sello"}},
+		{ID: "documents.settings.retention", ParentID: "operations", Label: "Retention", Path: "/module/documents/retention", Icon: "archive", Order: 60, Labels: map[string]string{"mn": "Хадгалалт", "ar": "الاحتفاظ", "zh": "保留策略", "fr": "Conservation", "ru": "Хранение", "es": "Conservación"}},
 	}
 }
 
