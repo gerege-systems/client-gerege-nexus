@@ -16,9 +16,12 @@
 -- чиглэл зөв: апп платформыг мэднэ, платформ аппыг мэдэхгүй. Урвуу
 -- хамаарлыг — `memberships.department_id` — 00076 таслав.
 --
--- Роль `gerege_nexus_app`-ыг платформын 00029 үүсгэнэ, тэр нь энэ миграц
--- ажиллахаас өмнө бүрэн хэрэгжсэн байна: модулийн миграц нь апп суулгах үед
--- ажилладаг бөгөөд платформ түүнээс өмнө өөрийн схемээ гүйцээсэн байдаг.
+-- Тенантын ролийг **нэрлэхийн оронд хайна**. Платформын 00029 түүнийг
+-- `gerege_nexus_app` нэрээр үүсгэсэн, 00079 (цөмийн v1.14.0) `gerege_nexus_tenant`
+-- болгож сольсон, ба шинэ өгөгдлийн сан дээр хуучин нэр огт үүсэхгүй. Аль нэгийг
+-- нь бататгасан миграц нөгөө талдаа `role ... does not exist` гэж унана — CI-ийн
+-- шинэ өгөгдлийн сан дээр яг тэр болсон. Роль огт байхгүй бол (superuser-ээр
+-- шууд холбогдсон тест) олгох зүйл байхгүй тул чимээгүй өнгөрнө.
 
 -- +goose Up
 
@@ -75,24 +78,44 @@ ALTER TABLE departments          FORCE  ROW LEVEL SECURITY;
 ALTER TABLE organisation_people  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organisation_people  FORCE  ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON departments;
-CREATE POLICY tenant_isolation ON departments TO gerege_nexus_app
-    USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
-        NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
-        ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
-
-DROP POLICY IF EXISTS tenant_isolation ON organisation_people;
-CREATE POLICY tenant_isolation ON organisation_people TO gerege_nexus_app
-    USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
-        NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
-        ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
-
 -- Платформын 00029 нь ALTER DEFAULT PRIVILEGES тавьсан боловч тэр нь зөвхөн
 -- тухайн ролийн үүсгэсэн объектод үйлчилнэ. Модулийн миграц ямар холболтоор
 -- ажиллахыг энэ файл шийдэхгүй тул эрхийг шууд нэрлэв.
-GRANT SELECT, INSERT, UPDATE, DELETE ON departments, organisation_people TO gerege_nexus_app;
+-- +goose StatementBegin
+DO $rls$
+DECLARE app_role TEXT;
+BEGIN
+    SELECT rolname INTO app_role FROM pg_roles
+     WHERE rolname IN ('gerege_nexus_tenant', 'gerege_nexus_app')
+     ORDER BY (rolname = 'gerege_nexus_tenant') DESC
+     LIMIT 1;
+    IF app_role IS NULL THEN
+        RETURN;
+    END IF;
+
+    EXECUTE format($p$
+        DROP POLICY IF EXISTS tenant_isolation ON departments;
+        CREATE POLICY tenant_isolation ON departments TO %I
+            USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
+                NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
+                ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
+            WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    $p$, app_role);
+
+    EXECUTE format($p$
+        DROP POLICY IF EXISTS tenant_isolation ON organisation_people;
+        CREATE POLICY tenant_isolation ON organisation_people TO %I
+            USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
+                NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
+                ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
+            WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    $p$, app_role);
+
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON departments, organisation_people TO %I',
+                   app_role);
+END
+$rls$;
+-- +goose StatementEnd
 
 -- +goose Down
 

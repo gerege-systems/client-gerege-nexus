@@ -26,7 +26,8 @@ COPY . .
 # is checked against, and the honest answer is the version of the platform
 # actually compiled into this image. Left to a build argument it defaults to
 # 0.0.0, and the instance then refuses every manifest it ships with — it cannot
-# read its own catalogue, so it will not start.#
+# read its own catalogue, so it will not start.
+#
 # Which package holds it is asked rather than assumed. PlatformVersion moved
 # from internal/platform to internal/kernel/config after the core's v1.13.0,
 # and `-X` naming a symbol that does not exist is **silently ignored** by the
