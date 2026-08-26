@@ -157,10 +157,21 @@ CREATE TABLE IF NOT EXISTS document_eid_sign_sessions (
 CREATE INDEX IF NOT EXISTS idx_document_eid_sign_sessions_document ON document_eid_sign_sessions(document_id);
 
 -- Тенант тусгаарлалт, платформын 00037-ийн хэлбэрээр.
+-- Тенантын ролийг нэрлэхийн оронд хайна: платформын 00029 түүнийг
+-- `gerege_nexus_app` нэрээр үүсгэсэн, цөмийн 00079 (v1.14.0) `gerege_nexus_tenant`
+-- болгосон, шинэ өгөгдлийн сан дээр хуучин нэр огт үүсэхгүй. Аль нэгийг нь
+-- бататгасан миграц нөгөө талдаа `role ... does not exist` гэж унана.
 -- +goose StatementBegin
-DO $$
-DECLARE t TEXT;
+DO $rls$
+DECLARE
+    t TEXT;
+    app_role TEXT;
 BEGIN
+    SELECT rolname INTO app_role FROM pg_roles
+     WHERE rolname IN ('gerege_nexus_tenant', 'gerege_nexus_app')
+     ORDER BY (rolname = 'gerege_nexus_tenant') DESC
+     LIMIT 1;
+
     FOREACH t IN ARRAY ARRAY[
         'document_records', 'document_signatures', 'document_approval_steps',
         'document_workflow_steps', 'document_templates',
@@ -170,31 +181,40 @@ BEGIN
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         EXECUTE format('ALTER TABLE %I FORCE  ROW LEVEL SECURITY', t);
         EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
+        CONTINUE WHEN app_role IS NULL;
         EXECUTE format($p$
-            CREATE POLICY tenant_isolation ON %I TO gerege_nexus_app
+            CREATE POLICY tenant_isolation ON %I TO %I
                 USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
                     NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
                     ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
                 WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
-        $p$, t);
+        $p$, t, app_role);
     END LOOP;
-END $$;
+
+    -- Файлын агуулга нь зөвхөн идэвхтэй байгууллагынх — дээрх тайлбарыг үз.
+    EXECUTE 'ALTER TABLE document_files ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'ALTER TABLE document_files FORCE  ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS tenant_isolation ON document_files';
+    IF app_role IS NULL THEN
+        RETURN;
+    END IF;
+    EXECUTE format($p$
+        CREATE POLICY tenant_isolation ON document_files TO %I
+            USING      (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+            WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+    $p$, app_role);
+
+    EXECUTE format($p$
+        GRANT SELECT, INSERT, UPDATE, DELETE ON
+            document_records, document_files, document_signatures,
+            document_approval_steps, document_workflow_steps, document_templates,
+            document_signature_policies, document_retention_rules,
+            document_eid_sign_sessions
+        TO %I
+    $p$, app_role);
+END
+$rls$;
 -- +goose StatementEnd
-
--- Файлын агуулга нь зөвхөн идэвхтэй байгууллагынх — дээрх тайлбарыг үз.
-ALTER TABLE document_files ENABLE ROW LEVEL SECURITY;
-ALTER TABLE document_files FORCE  ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS tenant_isolation ON document_files;
-CREATE POLICY tenant_isolation ON document_files TO gerege_nexus_app
-    USING      (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON
-    document_records, document_files, document_signatures,
-    document_approval_steps, document_workflow_steps, document_templates,
-    document_signature_policies, document_retention_rules,
-    document_eid_sign_sessions
-TO gerege_nexus_app;
 
 -- +goose Down
 

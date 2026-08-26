@@ -113,26 +113,55 @@ ALTER TABLE urtuu_task_events  FORCE  ROW LEVEL SECURITY;
 ALTER TABLE urtuu_numbers      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE urtuu_numbers      FORCE  ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON urtuu_tasks;
-CREATE POLICY tenant_isolation ON urtuu_tasks TO gerege_nexus_app
-    USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
-        NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
-        ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+-- Тенантын ролийг нэрлэхийн оронд хайна: платформын 00029 түүнийг
+-- `gerege_nexus_app` нэрээр үүсгэсэн, цөмийн 00079 (v1.14.0) `gerege_nexus_tenant`
+-- болгосон, шинэ өгөгдлийн сан дээр хуучин нэр огт үүсэхгүй. Аль нэгийг нь
+-- бататгасан миграц нөгөө талдаа `role ... does not exist` гэж унана.
+-- `gerege_nexus_operator` доор нэрээрээ хэвээр — тэр нэр солигдоогүй.
+-- +goose StatementBegin
+DO $rls$
+DECLARE app_role TEXT;
+BEGIN
+    SELECT rolname INTO app_role FROM pg_roles
+     WHERE rolname IN ('gerege_nexus_tenant', 'gerege_nexus_app')
+     ORDER BY (rolname = 'gerege_nexus_tenant') DESC
+     LIMIT 1;
+    IF app_role IS NULL THEN
+        RETURN;
+    END IF;
 
-DROP POLICY IF EXISTS tenant_isolation ON urtuu_task_events;
-CREATE POLICY tenant_isolation ON urtuu_task_events TO gerege_nexus_app
-    USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
-        NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
-        ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    EXECUTE format($p$
+        DROP POLICY IF EXISTS tenant_isolation ON urtuu_tasks;
+        CREATE POLICY tenant_isolation ON urtuu_tasks TO %I
+            USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
+                NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
+                ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
+            WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    $p$, app_role);
 
-DROP POLICY IF EXISTS tenant_isolation ON urtuu_numbers;
-CREATE POLICY tenant_isolation ON urtuu_numbers TO gerege_nexus_app
-    USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
-        NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
-        ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    EXECUTE format($p$
+        DROP POLICY IF EXISTS tenant_isolation ON urtuu_task_events;
+        CREATE POLICY tenant_isolation ON urtuu_task_events TO %I
+            USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
+                NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
+                ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
+            WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    $p$, app_role);
+
+    EXECUTE format($p$
+        DROP POLICY IF EXISTS tenant_isolation ON urtuu_numbers;
+        CREATE POLICY tenant_isolation ON urtuu_numbers TO %I
+            USING (tenant_id IS NULL OR tenant_id = ANY (COALESCE(
+                NULLIF(current_setting('app.allowed_tenants', true), '')::uuid[],
+                ARRAY[NULLIF(current_setting('app.current_tenant', true), '')::uuid])))
+            WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+    $p$, app_role);
+
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON urtuu_tasks, urtuu_task_events, urtuu_numbers TO %I',
+                   app_role);
+END
+$rls$;
+-- +goose StatementEnd
 
 -- Хяналтын хавтгай зөвхөн уншина: цөмийн 00064 энэ гурвыг нэрлэсэн бөгөөд
 -- энд давтагдана, эс бөгөөс апп нүүсний дараа оператор харахаа болино.
@@ -143,7 +172,6 @@ CREATE POLICY operator_read ON urtuu_task_events FOR SELECT TO gerege_nexus_oper
 DROP POLICY IF EXISTS operator_read ON urtuu_numbers;
 CREATE POLICY operator_read ON urtuu_numbers FOR SELECT TO gerege_nexus_operator USING (true);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON urtuu_tasks, urtuu_task_events, urtuu_numbers TO gerege_nexus_app;
 GRANT SELECT ON urtuu_tasks, urtuu_task_events, urtuu_numbers TO gerege_nexus_operator;
 
 -- +goose Down
