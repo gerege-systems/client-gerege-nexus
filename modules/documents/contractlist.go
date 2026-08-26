@@ -30,19 +30,19 @@ import (
 
 // ContractRow нь гэрээний жагсаалтын нэг мөр.
 type ContractRow struct {
-	ID             string     `json:"id"`
-	Number         string     `json:"contract_number,omitempty"`
-	Title          string     `json:"title"`
-	DocType        string     `json:"doc_type"`
-	State          string     `json:"contract_state"`
-	Mode           string     `json:"signing_mode"`
-	Counterparties string     `json:"counterparties"`
-	PartyCount     int        `json:"party_count"`
-	SignedCount    int        `json:"signed_count"`
-	RequiredCount  int        `json:"required_count"`
-	DeclinedCount  int        `json:"declined_count"`
-	Amount         *float64   `json:"amount,omitempty"`
-	Currency       string     `json:"currency,omitempty"`
+	ID             string   `json:"id"`
+	Number         string   `json:"contract_number,omitempty"`
+	Title          string   `json:"title"`
+	DocType        string   `json:"doc_type"`
+	State          string   `json:"contract_state"`
+	Mode           string   `json:"signing_mode"`
+	Counterparties string   `json:"counterparties"`
+	PartyCount     int      `json:"party_count"`
+	SignedCount    int      `json:"signed_count"`
+	RequiredCount  int      `json:"required_count"`
+	DeclinedCount  int      `json:"declined_count"`
+	Amount         *float64 `json:"amount,omitempty"`
+	Currency       string   `json:"currency,omitempty"`
 	// Тараалтын мастераас үүссэн хүүхэд гэрээ эцгээ нэрлэнэ; мастер нь
 	// хэдэн хүүхэдтэйгээ, хэд нь хүчин төгөлдөр болсныг тоолж авчирна —
 	// жагсаалт 800 гэрээг эцгээр нь бүлэглэж зурна.
@@ -59,6 +59,43 @@ type ContractRow struct {
 
 // contractListLimit нь нэг хуудасны дээд хэмжээ.
 const contractListLimit = 200
+
+// createContractHandler нь Гэрээ дэлгэцийн «Шинэ гэрээ».
+//
+// Ердийн createDocumentHandler-ээс нэг л зүйлээр ялгаатай, гэхдээ тэр нэг нь
+// амин чухал: гэрээ ТӨРӨХДӨӨ contract_state='DRAFT' авна. Урьд нь NONE
+// төрдөг байсан ба Гэрээний жагсаалт NONE-ыг баримт гэж шүүдэг тул хэрэглэгч
+// гэрээ үүсгэмэгц жагсаалтаас нь АЛГА болдог байв — «үүсгэсэн зүйл чинь
+// алга болох» бол системд итгэх итгэлийг нэг товчлуураар устгадаг алдаа.
+// Тал нэмэгдэхийг хүлээх шаардлагагүй: Гэрээ дэлгэцээс үүсгэсэн зүйл бол
+// эхний секундээсээ гэрээ.
+func (m *DocumentsModule) createContractHandler(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := nexus.RequireTenant(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+		nexus.Error(w, http.StatusBadRequest, "гарчиг бичнэ үү")
+		return
+	}
+	doc, err := m.CreateDocument(r.Context(), tenantID, strings.TrimSpace(req.Title), "CONTRACT")
+	if err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "гэрээ үүссэнгүй")
+		return
+	}
+	if _, err := m.db.Exec(r.Context(),
+		`UPDATE document_records SET contract_state = 'DRAFT'
+		  WHERE id = $1 AND tenant_id = $2 AND contract_state = 'NONE'`,
+		doc.ID, tenantID); err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "гэрээний төлөв бичигдсэнгүй")
+		return
+	}
+	nexus.Audit(r.Context(), tenantID, actorFor(r.Context()), "documents.contract_created", doc.ID, nil)
+	nexus.JSON(w, http.StatusCreated, doc)
+}
 
 // listContractsHandler нь гэрээ бүрийг НЭГ мөрөөр буцаана.
 //
@@ -180,15 +217,27 @@ func (m *DocumentsModule) saveContractFactsHandler(w http.ResponseWriter, r *htt
 		        effective_from = NULLIF($6, '')::date,
 		        effective_to   = NULLIF($7, '')::date,
 		        due_at         = NULLIF($8, '')::timestamptz
-		  WHERE id = $1 AND tenant_id = $2`,
+		  WHERE id = $1 AND tenant_id = $2
+		    AND contract_state IN ($9, $10)`,
 		docID, tenantID, strings.TrimSpace(req.Number), req.Amount, req.Currency,
 		strings.TrimSpace(req.EffectiveFrom), strings.TrimSpace(req.EffectiveTo),
-		strings.TrimSpace(req.DueAt))
+		strings.TrimSpace(req.DueAt), ContractNone, ContractDraft)
 	if err != nil {
 		nexus.Error(w, http.StatusBadRequest, "гэрээний мэдээлэл хадгалагдсангүй")
 		return
 	}
 	if tag.RowsAffected() == 0 {
+		// Илгээсэн гэрээний фактыг өөрчилбөл царцаасан хувь дээрх
+		// {{дугаар}}, {{дүн}}-тэй зөрнө — олдоогүйгээс нь ялгаж хэлье.
+		var state string
+		err := m.db.QueryRow(r.Context(),
+			`SELECT contract_state FROM document_records
+			  WHERE id = $1 AND tenant_id = $2`, docID, tenantID).Scan(&state)
+		if err == nil && state != ContractNone && state != ContractDraft {
+			nexus.Error(w, http.StatusConflict,
+				"гэрээ илгээгдсэн — мэдээллийг нь өөрчлөхгүй (эхлээд эргүүлэн татна уу)")
+			return
+		}
 		nexus.Error(w, http.StatusNotFound, "гэрээ олдсонгүй")
 		return
 	}

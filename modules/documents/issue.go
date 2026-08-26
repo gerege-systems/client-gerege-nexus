@@ -30,6 +30,7 @@ package documents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -51,6 +52,19 @@ type issueRecipient struct {
 	Position   string `json:"position"`
 	line       int
 }
+
+// issueBatchCap нь НЭГ хүсэлтийн дээд хүлээн авагч. Тараалт синхрон
+// ажилладаг ба урд нь nginx 90 секундэд холболтыг тасалдаг: Word мастертай
+// тараалт хүн бүрд LibreOffice хөрвүүлэлт хийдэг (~1-2с), PDF/бичвэрийнх
+// хямд. Дэлгэц жагсаалтаа энэ хэмжээгээр хэсэглэн явуулдаг тул хэрэглэгчид
+// 800 хүн ч «нэг товч» хэвээр — явц нь л харагдана.
+const (
+	issueBatchCapWord  = 15
+	issueBatchCapPlain = 200
+)
+
+// errBodyTooLarge — файл маршрутын хязгаараас том. Handler 413 болгоно.
+var errBodyTooLarge = errors.New("файл хэтэрхий том байна")
 
 type issueSkip struct {
 	Row    int    `json:"row,omitempty"`
@@ -108,6 +122,10 @@ func (m *DocumentsModule) issueHandler(w http.ResponseWriter, r *http.Request) {
 
 	recipients, err := m.issueRecipients(r)
 	if err != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			nexus.Error(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
 		nexus.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -115,16 +133,20 @@ func (m *DocumentsModule) issueHandler(w http.ResponseWriter, r *http.Request) {
 		nexus.Error(w, http.StatusBadRequest, "нэг ч хүлээн авагч алга")
 		return
 	}
-	if len(recipients) > importRowCap {
-		nexus.Error(w, http.StatusBadRequest,
-			fmt.Sprintf("%d хүлээн авагч байна — нэг тараалтад дээд тал нь %d", len(recipients), importRowCap))
+	cap := issueBatchCapPlain
+	if master != nil && master.Word != nil {
+		cap = issueBatchCapWord
+	}
+	if len(recipients) > cap {
+		nexus.Error(w, http.StatusRequestEntityTooLarge, fmt.Sprintf(
+			"нэг хүсэлтэд дээд тал нь %d хүлээн авагч — жагсаалтаа хэсэглэж явуулна уу (дэлгэц үүнийг өөрөө хийдэг)", cap))
 		return
 	}
 
 	// Давхардлын хамгаалалт: энэ мастераас ИЖИЛ регистрт аль хэдийн
 	// тараагдсан бол дахин үүсгэхгүй. Дахин дарсан админ 800 хуулбар биш,
 	// «аль хэдийн явсан» гэсэн хариу авна.
-	already, err := m.issuedRegs(r.Context(), tenantID, masterID)
+	already, err := m.issuedKeys(r.Context(), tenantID, masterID)
 	if err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "өмнөх тараалт уншигдсангүй")
 		return
@@ -133,16 +155,16 @@ func (m *DocumentsModule) issueHandler(w http.ResponseWriter, r *http.Request) {
 	issued := []issuedChild{}
 	skips := []issueSkip{}
 	for _, rec := range recipients {
-		reg := strings.ToUpper(strings.TrimSpace(rec.SignerReg))
+		key := issueKeyOf(rec)
 		switch {
 		case strings.TrimSpace(rec.Name) == "":
 			skips = append(skips, issueSkip{rec.line, rec.Name, "нэр алга"})
 			continue
-		case reg == "":
+		case strings.TrimSpace(rec.SignerReg) == "":
 			skips = append(skips, issueSkip{rec.line, rec.Name, "гарын үсэг зурагчийн регистрийн дугаар алга — PIN2 хэнд ч очихгүй"})
 			continue
-		case already[reg]:
-			skips = append(skips, issueSkip{rec.line, rec.Name, "энэ регистрт аль хэдийн тараагдсан"})
+		case already[key]:
+			skips = append(skips, issueSkip{rec.line, rec.Name, "энэ хүлээн авагчид аль хэдийн тараагдсан"})
 			continue
 		}
 		childID, err := m.issueOne(r.Context(), tenantID, masterID, shape, issuer, master, body, rec)
@@ -150,7 +172,7 @@ func (m *DocumentsModule) issueHandler(w http.ResponseWriter, r *http.Request) {
 			skips = append(skips, issueSkip{rec.line, rec.Name, err.Error()})
 			continue
 		}
-		already[reg] = true
+		already[key] = true
 		issued = append(issued, issuedChild{DocumentID: childID, Name: rec.Name})
 	}
 
@@ -172,12 +194,65 @@ func (m *DocumentsModule) issueHandler(w http.ResponseWriter, r *http.Request) {
 	nexus.JSON(w, http.StatusOK, map[string]any{"issued": len(issued), "children": issued, "skipped": skips})
 }
 
+// issuePreviewHandler нь POST /{id}/issue/preview — файлыг зөвхөн уншина,
+// ЮУ Ч ҮҮСГЭХГҮЙ. Дэлгэц Excel-ээ эндээс JSON болгон авч, дараа нь
+// тараалтаа хэсэгчилж явуулдаг; аль мөр нь аль хэдийн тараагдсаныг
+// давхар тэмдэглэж өгнө — админ дарахаасаа ӨМНӨ харна.
+func (m *DocumentsModule) issuePreviewHandler(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := nexus.RequireTenant(w, r)
+	if !ok {
+		return
+	}
+	masterID := chi.URLParam(r, "id")
+	if _, err := m.contractShapeOf(r.Context(), m.db, tenantID, masterID); err != nil {
+		nexus.Error(w, http.StatusNotFound, "document not found")
+		return
+	}
+	recipients, err := m.issueRecipients(r)
+	if err != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			nexus.Error(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
+		nexus.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	already, err := m.issuedKeys(r.Context(), tenantID, masterID)
+	if err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "өмнөх тараалт уншигдсангүй")
+		return
+	}
+	type previewRow struct {
+		issueRecipient
+		Line          int    `json:"line,omitempty"`
+		AlreadyIssued bool   `json:"already_issued,omitempty"`
+		Problem       string `json:"problem,omitempty"`
+	}
+	rows := make([]previewRow, 0, len(recipients))
+	for _, rec := range recipients {
+		row := previewRow{issueRecipient: rec, Line: rec.line}
+		switch {
+		case strings.TrimSpace(rec.Name) == "":
+			row.Problem = "нэр алга"
+		case strings.TrimSpace(rec.SignerReg) == "":
+			row.Problem = "гарын үсэг зурагчийн регистрийн дугаар алга"
+		case already[issueKeyOf(rec)]:
+			row.AlreadyIssued = true
+		}
+		rows = append(rows, row)
+	}
+	nexus.JSON(w, http.StatusOK, map[string]any{"recipients": rows})
+}
+
 // issueRecipients нь хүсэлтээс жагсаалтыг уншина — Excel/CSV файл эсвэл JSON.
 func (m *DocumentsModule) issueRecipients(r *http.Request) ([]issueRecipient, error) {
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/") {
 		file, header, err := r.FormFile("file")
 		if err != nil {
+			if tooLarge(err) {
+				return nil, errBodyTooLarge
+			}
 			return nil, fmt.Errorf("файл ирсэнгүй — multipart 'file' талбарт өгнө үү")
 		}
 		defer func() { _ = file.Close() }()
@@ -207,27 +282,41 @@ func (m *DocumentsModule) issueRecipients(r *http.Request) ([]issueRecipient, er
 	return req.Recipients, nil
 }
 
-// issuedRegs нь энэ мастераас аль хэдийн тараагдсан регистрийн дугаарууд.
-func (m *DocumentsModule) issuedRegs(ctx context.Context, tenantID, masterID string) (map[string]bool, error) {
+// issueKeyOf нь давхардлын түлхүүр: БАЙГУУЛЛАГА|ЗУРАГЧ.
+//
+// Зөвхөн зурагчийн регистрээр түлхүүрлэвэл нэг хүн ХОЁР байгууллагыг
+// төлөөлөх нь давхардал гэж уншигдана — нэг нягтлан хоёр компанийхаа өмнөөс
+// зурах нь ердийн явдал.
+func issueKeyOf(rec issueRecipient) string {
+	return strings.ToUpper(strings.TrimSpace(rec.OrgReg)) + "|" +
+		strings.ToUpper(strings.TrimSpace(rec.SignerReg))
+}
+
+// issuedKeys нь энэ мастераас аль хэдийн тараагдсан хүлээн авагчид.
+//
+// Татгалзсан болон эргүүлж татагдсан хүүхэд ТООЦОГДОХГҮЙ: татгалзсан хүнд
+// зассан гэрээгээ дахин тараах нь яг л хийх ёстой үйлдэл.
+func (m *DocumentsModule) issuedKeys(ctx context.Context, tenantID, masterID string) (map[string]bool, error) {
 	rows, err := m.db.Query(ctx,
-		`SELECT upper(g.reg_number)
+		`SELECT COALESCE(upper(p.registration_number), '') || '|' || COALESCE(upper(g.reg_number), '')
 		   FROM document_records c
 		   JOIN document_parties p ON p.document_id = c.id AND p.party_role <> 'issuer'
 		   JOIN document_party_signatories g ON g.party_id = p.id
-		  WHERE c.parent_document_id = $1 AND c.tenant_id = $2`, masterID, tenantID)
+		  WHERE c.parent_document_id = $1 AND c.tenant_id = $2
+		    AND p.state NOT IN ('declined', 'withdrawn')`, masterID, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	regs := map[string]bool{}
+	keys := map[string]bool{}
 	for rows.Next() {
-		var reg string
-		if err := rows.Scan(&reg); err != nil {
+		var key string
+		if err := rows.Scan(&key); err != nil {
 			return nil, err
 		}
-		regs[reg] = true
+		keys[key] = true
 	}
-	return regs, rows.Err()
+	return keys, rows.Err()
 }
 
 // issueOne нь нэг хүлээн авагчид нэг бие даасан гэрээ үүсгэнэ.
@@ -313,15 +402,43 @@ func (m *DocumentsModule) issueOne(ctx context.Context, tenantID, masterID strin
 		}
 	}
 
-	// Гаргагч тал — мастерынхаа хуулбар.
+	// Зэрэгцээ хоёр тараалт нэг хүлээн авагчид хоёр гэрээ үүсгэхгүй:
+	// (мастер, түлхүүр)-ээр гүйлгээний advisory түгжээ аваад, түгжээн дор
+	// давхардлаа дахин шалгана — handler-ийн эхэнд уншсан жагсаалт нөгөө
+	// хүсэлтийн commit-ыг харж чадахгүй.
+	if _, err := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtext($1))`, masterID+"|"+issueKeyOf(rec)); err != nil {
+		return "", fmt.Errorf("түгжээ авагдсангүй: %w", err)
+	}
+	var dup bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (
+		    SELECT 1 FROM document_records c
+		    JOIN document_parties p ON p.document_id = c.id AND p.party_role <> 'issuer'
+		    JOIN document_party_signatories g ON g.party_id = p.id
+		   WHERE c.parent_document_id = $1 AND c.tenant_id = $2 AND c.id <> $3
+		     AND p.state NOT IN ('declined', 'withdrawn')
+		     AND COALESCE(upper(p.registration_number),'') || '|' || COALESCE(upper(g.reg_number),'') = $4)`,
+		masterID, tenantID, childID, issueKeyOf(rec)).Scan(&dup); err != nil {
+		return "", fmt.Errorf("давхардал шалгагдсангүй: %w", err)
+	}
+	if dup {
+		return "", fmt.Errorf("энэ хүлээн авагчид аль хэдийн тараагдсан")
+	}
+
+	// Гаргагч тал — мастерынхаа хуулбар, ГЭРТЭЙГЭЭ: 00006-ийн CHECK нь
+	// төрөл бүрээс хаягаа шаарддаг тул member/tenant гаргагчийн
+	// member_user_id/counterparty_tenant_id-г орхивол тараалт бүхэлдээ
+	// CHECK зөрчлөөр унана.
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO document_parties
 		     (tenant_id, document_id, ordinal, party_role, party_kind, display_name,
-		      legal_name, registration_number, address_line, contact_email, contact_phone, state)
-		 VALUES ($1, $2, 1, 'issuer', $3, $4, $5, $6, $7, $8, $9, 'draft')`,
+		      legal_name, registration_number, address_line, contact_email, contact_phone,
+		      member_user_id, counterparty_tenant_id, state)
+		 VALUES ($1, $2, 1, 'issuer', $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft')`,
 		tenantID, childID, issuer.Kind, issuer.DisplayName, issuer.LegalName,
 		issuer.RegistrationNumber, issuer.AddressLine, issuer.ContactEmail,
-		issuer.ContactPhone); err != nil {
+		issuer.ContactPhone, issuer.MemberUserID, issuer.CounterpartyTenant); err != nil {
 		return "", fmt.Errorf("гаргагч тал үүссэнгүй: %w", err)
 	}
 

@@ -78,6 +78,10 @@ func (m *DocumentsModule) importPartiesHandler(w http.ResponseWriter, r *http.Re
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
+		if tooLarge(err) {
+			nexus.Error(w, http.StatusRequestEntityTooLarge, "файл хэтэрхий том байна")
+			return
+		}
 		nexus.Error(w, http.StatusBadRequest, "файл ирсэнгүй — multipart 'file' талбарт өгнө үү")
 		return
 	}
@@ -197,9 +201,27 @@ func readRecipientRows(file io.Reader, filename string) ([]recipientRow, error) 
 			return nil, fmt.Errorf("Excel файлд хуудас алга")
 		}
 		// ЭХНИЙ хуудас — жагсаалт хоёрдугаар хуудсанд байдаг файл нь
-		// ойлголцлын алдаа бөгөөд түүнийг таамгаар засахгүй.
-		raw, err = book.GetRows(sheets[0])
+		// ойлголцлын алдаа бөгөөд түүнийг таамгаар засахгүй. Iterator-оор:
+		// GetRows бүх мөрийг нэг дор дэлгэдэг тул жижиг .xlsx дотор
+		// далдалсан сая мөр санах ойг идэх байсан — хязгаартаа зогсоно.
+		it, err := book.Rows(sheets[0])
 		if err != nil {
+			return nil, fmt.Errorf("Excel мөрүүд уншигдсангүй: %v", err)
+		}
+		for it.Next() {
+			if len(raw) > importRowCap {
+				_ = it.Close()
+				return nil, fmt.Errorf("файлд %d-с олон мөр байна — нэг гэрээнд дээд тал нь %d тал",
+					importRowCap, importRowCap)
+			}
+			cells, err := it.Columns()
+			if err != nil {
+				_ = it.Close()
+				return nil, fmt.Errorf("Excel мөрүүд уншигдсангүй: %v", err)
+			}
+			raw = append(raw, cells)
+		}
+		if err := it.Close(); err != nil {
 			return nil, fmt.Errorf("Excel мөрүүд уншигдсангүй: %v", err)
 		}
 	case ".csv", ".txt":

@@ -396,6 +396,14 @@ func limitBodyTo(max int64) func(http.Handler) http.Handler {
 // limitBody нь JSON маршрутуудын анхдагч хязгаар.
 func limitBody(next http.Handler) http.Handler { return limitBodyTo(bodyLimit)(next) }
 
+// tooLarge нь биет хязгаараас хэтэрснийг таньдаг: `ContentLength` мэдэгдээгүй
+// chunked илгээлт дээр 413 нь `MaxBytesReader`-ээс уншилтын АЛДАА болж ирдэг —
+// тэр үед «файл ирсэнгүй» гэсэн 400 биш, шалтгааныг нь хэлсэн 413 буцаана.
+func tooLarge(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
+}
+
 func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Handler) http.Handler) {
 	// Гэрээний дэлгэцүүд — ui.go-г үз.
 	m.registerUI(r)
@@ -431,6 +439,18 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 		// нэмдэг — тиймээс нэг бүлэгт хоёр хэмжээ байрлуулах ганц зам нь
 		// тэднийг салгах явдал.
 		dr.With(manage, limitBodyTo(maxAttachmentBody)).Post("/{id}/file", m.attachFileHandler)
+		// Эдгээр нь мөн адил ТОМ биетэй тул 64 КБ-ийн бүлгээс ГАДУУР:
+		// бүлгийн `Use` нь `With`-ээс түрүүлж ажилладаг тул бүлэг дотор
+		// байрлуулбал жинхэнэ хүчинтэй хязгаар нь 64 КБ болно — Excel
+		// жагсаалт, урт гэрээний текст хоёул тэнд багтахгүй.
+		parties := nexus.RequirePermission(m.perms, "documents.parties")
+		send := nexus.RequirePermission(m.perms, "documents.send")
+		dr.With(parties, limitBodyTo(importBodyLimit)).Post("/{id}/parties/import", m.importPartiesHandler)
+		// Тараалт нь хүүхэд гэрээнд ТАЛ үүсгэдэг тул илгээх эрх дангаараа
+		// хангалтгүй — тал засах эрхийг давхар шаардана.
+		dr.With(parties, send, limitBodyTo(importBodyLimit)).Post("/{id}/issue", m.issueHandler)
+		dr.With(parties, send, limitBodyTo(importBodyLimit)).Post("/{id}/issue/preview", m.issuePreviewHandler)
+		dr.With(manage, limitBodyTo(1<<20)).Put("/{id}/body", m.saveBodyHandler)
 
 		// JSON маршрутууд. 64 КБ нь эдгээрт зөв тоо — тайлбарыг `bodyLimit`
 		// дээр үз — бөгөөд тэднийг нэг дор барих нь хэн нэгэн шинэ маршрут
@@ -439,18 +459,14 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 		// хэдэн талбар, PDF биш.
 		dr.Group(func(pr chi.Router) {
 			pr.Use(limitBody)
-			parties := nexus.RequirePermission(m.perms, "documents.parties")
-			send := nexus.RequirePermission(m.perms, "documents.send")
 			// Гэрээний жагсаалт — баримтын жагсаалтаас тусдаа, тайлбарыг
 			// contractlist.go дээр үз.
 			pr.With(read).Get("/contracts", m.listContractsHandler)
+			pr.With(manage).Post("/contracts", m.createContractHandler)
 			pr.With(manage).Put("/{id}/contract", m.saveContractFactsHandler)
 
 			pr.With(read).Get("/{id}/parties", m.listPartiesHandler)
 			pr.With(parties).Post("/{id}/parties", m.addPartyHandler)
-			// Олон хүлээн авагч нэг файлаар — import.go. Биеийн хязгаар нь
-			// JSON-ийнхоос том: Excel файл ирнэ.
-			pr.With(parties, limitBodyTo(importBodyLimit)).Post("/{id}/parties/import", m.importPartiesHandler)
 			pr.With(read).Get("/parties/import-template.xlsx", m.importTemplateHandler)
 			pr.With(read).Get("/contract-template.docx", m.wordTemplateHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
@@ -463,16 +479,11 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			pr.With(read).Get("/{id}/parties/{pid}/invitations", m.listInvitesHandler)
 			pr.With(send).Delete("/{id}/parties/{pid}/invitations/{iid}", m.revokeInviteHandler)
 
-			// Гэрээний бичвэр. 64 КБ-аас том байж болно — монгол гэрээ кирилл
-			// тул тэмдэгт тутам хоёр байт — тиймээс өөрийн хязгаартай.
+			// Гэрээний бичвэр. PUT нь том биетэй тул бүлгээс гадуур (дээр).
 			pr.With(read).Get("/{id}/body", m.getBodyHandler)
-			pr.With(manage, limitBodyTo(1<<20)).Put("/{id}/body", m.saveBodyHandler)
 
 			// Илгээх: тал бүрийн PDF энд зурагдаж ХӨЛДӨНӨ.
 			pr.With(send).Post("/{id}/send", m.sendHandler)
-			// Тараалт: хүлээн авагч бүрд ТУСДАА гэрээ — issue.go-г үз.
-			// Excel файл ирж болох тул биеийн хязгаар нь импортынхтой ижил.
-			pr.With(send, limitBodyTo(importBodyLimit)).Post("/{id}/issue", m.issueHandler)
 			pr.With(send).Post("/{id}/withdraw", m.withdrawHandler)
 			pr.With(send).Post("/{id}/reopen", m.reopenHandler)
 			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
@@ -1663,7 +1674,7 @@ func actorFor(ctx context.Context) string {
 }
 
 // actorID нь `created_by`, `uploaded_by` мэт UUID баганад бичигдэх утга.
-// Нэвтрээгүй бол хоосон — дуудагч бүр `NULLIF($n,'')::uuid`-ээр ороодог тул
+// Нэвтрээгүй бол хоосон — дуудагч бүр `NULLIF($n,”)::uuid`-ээр ороодог тул
 // хоосон нь NULL болно.
 func actorID(ctx context.Context) string {
 	claims, err := nexus.UserFromContext(ctx)

@@ -315,9 +315,12 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 	if sent > 0 {
 		if _, err := m.db.Exec(r.Context(),
 			`UPDATE document_records
-			    SET signing_mode = $3, contract_state = $4, sent_at = COALESCE(sent_at, NOW())
+			    SET signing_mode = $3,
+			        contract_state = CASE WHEN contract_state IN ($4, $5)
+			                              THEN $6 ELSE contract_state END,
+			        sent_at = COALESCE(sent_at, NOW())
 			  WHERE id = $1 AND tenant_id = $2`,
-			docID, tenantID, req.Mode, ContractSent); err != nil {
+			docID, tenantID, req.Mode, ContractNone, ContractDraft, ContractSent); err != nil {
 			nexus.Error(w, http.StatusInternalServerError, "гэрээний төлөв шинэчлэгдсэнгүй")
 			return
 		}
@@ -375,7 +378,7 @@ func (m *DocumentsModule) freezeFromWord(ctx context.Context, master *attachedFi
 		SchoolName:   p.DisplayName,
 		SchoolCode:   p.RegistrationNumber,
 		Aimag:        p.AddressLine,
-		Principal:    signatoryName(p),
+		Principal:    principalOrBlank(signatoryName(p)),
 		ContractCode: shape.Number,
 		Title:        shape.Title,
 		Date:         time.Now(),
@@ -401,7 +404,7 @@ func (m *DocumentsModule) freezeTextFor(shape contractShape, issuer, p Party, bo
 		SchoolName:   p.DisplayName,
 		SchoolCode:   p.RegistrationNumber,
 		Aimag:        p.AddressLine,
-		Principal:    signatoryName(p),
+		Principal:    principalOrBlank(signatoryName(p)),
 		ContractCode: shape.Number,
 		Title:        shape.Title,
 		Date:         time.Now(),
@@ -440,7 +443,7 @@ func (m *DocumentsModule) freezeFor(ctx context.Context, tenantID, docID string,
 		SchoolName: p.DisplayName,
 		SchoolCode: p.RegistrationNumber,
 		Aimag:      p.AddressLine,
-		Principal:  signatoryName(p),
+		Principal:  principalOrBlank(signatoryName(p)),
 		// Гэрээний ДУГААР — баримтын ТӨРӨЛ биш. Урьд нь энд DocType очдог
 		// байсан тул {{дугаар}} нь "CONTRACT" гэж орлуулагддаг байв.
 		ContractCode: shape.Number,
@@ -468,6 +471,15 @@ func signatoryName(p Party) string {
 		return p.Signatories[0].FullName
 	}
 	return ""
+}
+
+// principalOrBlank нь төлөөлөгч нэрлэгдээгүй үед зурах мөр буцаана —
+// царцаасан хувь дээр "{{захирал}}" ч, хоосон зай ч үлдэхгүй.
+func principalOrBlank(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "____________________"
+	}
+	return name
 }
 
 func firstNonEmpty(values ...string) string {

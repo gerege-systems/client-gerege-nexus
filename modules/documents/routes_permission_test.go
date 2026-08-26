@@ -89,6 +89,22 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 		{http.MethodPut, "/api/v1/documents/" + id + "/title", "documents.manage"},
 		{http.MethodPost, "/api/v1/documents/" + id + "/route", "documents.manage"},
 
+		// Contract authoring: facts and body are manage, like the document row.
+		{http.MethodPost, "/api/v1/documents/contracts", "documents.manage"},
+		{http.MethodPut, "/api/v1/documents/" + id + "/contract", "documents.manage"},
+		{http.MethodPut, "/api/v1/documents/" + id + "/body", "documents.manage"},
+
+		// Parties: naming who contracts is its own authority.
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties", "documents.parties"},
+		{http.MethodDelete, "/api/v1/documents/" + id + "/parties/" + id, "documents.parties"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties/import", "documents.parties"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties/" + id + "/signatories", "documents.parties"},
+
+		// Sending: the act that freezes copies and starts the clock.
+		{http.MethodPost, "/api/v1/documents/" + id + "/send", "documents.send"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/withdraw", "documents.send"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties/" + id + "/invite", "documents.send"},
+
 		// Deciding. Signing and refusing to sign are the same authority, and it
 		// is not the authority to draft.
 		{http.MethodPost, "/api/v1/documents/" + id + "/reject", "documents.sign"},
@@ -97,7 +113,8 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 		{http.MethodPost, "/api/v1/documents/" + id + "/sign/eid/poll", "documents.sign"},
 	}
 
-	all := []string{"documents.read", "documents.manage", "documents.sign"}
+	all := []string{"documents.read", "documents.manage", "documents.sign",
+		"documents.parties", "documents.send"}
 
 	for _, tc := range cases {
 		name := tc.method + " " + strings.Replace(tc.path, id, "{id}", 1)
@@ -118,6 +135,25 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Тараалт нь хүүхэд гэрээнд тал үүсгээд ШУУД илгээдэг — хоёр үйлдлийн эрхийг
+// давхар шаардана. Дээрх хүснэгт «нэг эрх → нэг маршрут» хэлбэртэй тул энэ
+// хосыг тусад нь барина: аль нэгийг нь дангаар барьсан хүн 403 авах ёстой.
+func TestIssueNeedsBothPartiesAndSend(t *testing.T) {
+	const id = "3f1b9c62-2f1a-4a1c-9d3e-8b7a5c4e1d20"
+	for _, held := range []string{"documents.parties", "documents.send",
+		"documents.read", "documents.manage", "documents.sign"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/"+id+"/issue",
+			strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		routerFor(t, held).ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("holding only %s got past /issue (status %d) — it must need parties AND send",
+				held, rec.Code)
+		}
 	}
 }
 

@@ -77,6 +77,10 @@ func convertDocxToPDF(ctx context.Context, content []byte, filename string) ([]b
 	if err != nil {
 		return nil, err
 	}
+	if len(pdf) > 100<<20 {
+		// Чимээгүй тайрвал эвдэрхий PDF-д гарын үсэг зурагдана — алдаа нь дээр.
+		return nil, fmt.Errorf("хөрвүүлсэн PDF 100MB-с том — баримтаа хөнгөлнө үү")
+	}
 	if len(pdf) < 5 || string(pdf[:5]) != "%PDF-" {
 		return nil, fmt.Errorf("хөрвүүлэгч PDF биш зүйл буцаав")
 	}

@@ -55,6 +55,26 @@ func TestWordSubstitutionCrossesRunBoundaries(t *testing.T) {
 	}
 }
 
+// Утга нь ӨӨРИЙНХӨӨ түлхүүрийг агуулж болно: «{{тал}}» гэдэг үг нэртэйгээ
+// орсон байгууллага орлуулгыг мөнхийн давталтад оруулж байв — нэг гүйлтийн
+// орлуулга ЭХ бичвэрээс л хайдаг тул оруулсан утгаа дахин хайхгүй.
+func TestWordSubstitutionValueContainingItsOwnKeyTerminates(t *testing.T) {
+	f := Fields{SchoolName: "«{{тал}}» ХХК", SchoolCode: "{{регистр}}"}
+	xml := `<w:p><w:r><w:t>Тал: {{тал}} ({{регистр}})</w:t></w:r></w:p>`
+
+	done := make(chan string, 1)
+	go func() { done <- substituteWordXML(xml, substitutionPairs(f)) }()
+	select {
+	case got := <-done:
+		want := "Тал: «{{тал}}» ХХК ({{регистр}})"
+		if text := visibleText(got); text != want {
+			t.Errorf("бичвэр %q болов, %q хүлээсэн", text, want)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("орлуулга 5 секундэд дуусаагүй — мөнхийн давталт")
+	}
+}
+
 // Орлуулах утга нь XML-д аюулгүй байх ёстой: & агуулсан нэр баримтыг
 // эвдэхгүй.
 func TestWordSubstitutionEscapesTheValue(t *testing.T) {

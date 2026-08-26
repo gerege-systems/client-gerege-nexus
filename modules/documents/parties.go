@@ -525,13 +525,18 @@ func (m *DocumentsModule) removePartyHandler(w http.ResponseWriter, r *http.Requ
 		nexus.Error(w, http.StatusNotFound, "document not found")
 		return
 	}
-	if shape.State != ContractDraft && shape.State != ContractNone {
-		nexus.Error(w, http.StatusConflict, ErrNotDraft.Error())
+	// EXECUTED гэрээ — түүхэн баримт, талыг нь хасахгүй. Бусад төлөвт
+	// зөвхөн ноорог, эсвэл ЗАМААСАА ГАРСАН (татгалзсан/буцаасан/хугацаа
+	// дууссан) талыг хасна: татгалзсан тал гэрээг мухардуулахгүй —
+	// хасмагц төлөвийн триггер гэрээг цааш нь тооцоолно.
+	if shape.State == ContractExecuted {
+		nexus.Error(w, http.StatusConflict, "гэрээ байгуулагдсан — тал хасахгүй")
 		return
 	}
 	tag, err := m.db.Exec(r.Context(),
 		`DELETE FROM document_parties
-		  WHERE tenant_id = $1 AND document_id = $2 AND id = $3 AND state = 'draft'`,
+		  WHERE tenant_id = $1 AND document_id = $2 AND id = $3
+		    AND state IN ('draft','declined','withdrawn','expired')`,
 		tenantID, docID, partyID)
 	if err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "тал хасагдсангүй")

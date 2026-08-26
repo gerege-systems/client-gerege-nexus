@@ -96,61 +96,104 @@ func isWordTextPart(name string) bool {
 var wordTextRe = regexp.MustCompile(`<w:t(?: [^>]*)?>([^<]*)</w:t>`)
 
 // substituteWordXML нь нэг XML хэсэгт бүх хосыг орлуулна.
+//
+// НЭГ ГҮЙЛТ: бүх тохиолдлыг ЭХ бичвэрээс эхэлж олоод, дараа нь баруунаас
+// зүүн тийш нэг мөсөн сольдог. Ингэснээр орлуулсан УТГЫГ хэзээ ч дахин
+// хайхгүй — «Нийлүүлэгч {{тал}} ХХК» гэдэг нэртэй байгууллага орлуулгыг
+// мөнхийн давталтад оруулж чадахгүй (эх утга нь хэвээр, дахин хайлт үгүй).
 func substituteWordXML(doc string, pairs []string) string {
+	matches := wordTextRe.FindAllStringSubmatchIndex(doc, -1)
+	if len(matches) == 0 {
+		return doc
+	}
+
+	// Харагдах бичвэр ба run бүрийн (doc-координат, full-координат) зураглал.
+	segs := make([]wordSeg, len(matches))
+	var full strings.Builder
+	for i, m := range matches {
+		segs[i] = wordSeg{m[2], m[3], full.Len()}
+		full.WriteString(doc[m[2]:m[3]])
+	}
+	text := full.String()
+
+	// Бүх түлхүүрийн бүх тохиолдлыг ЭХ бичвэрээс. Давхцахгүй: олдсон мужийг
+	// эзэлж тэмдэглэнэ, дараагийн түлхүүр эзлэгдсэн газраас олдвол алгасна.
+	taken := make([]bool, len(text))
+	var edits []wordEdit
 	for i := 0; i+1 < len(pairs); i += 2 {
 		key, value := pairs[i], xmlEscape(pairs[i+1])
-		for {
-			next, replaced := replaceOnceAcrossRuns(doc, key, value)
-			if !replaced {
+		for from := 0; ; {
+			idx := strings.Index(text[from:], key)
+			if idx < 0 {
 				break
 			}
-			doc = next
+			start := from + idx
+			end := start + len(key)
+			from = end
+			overlaps := false
+			for j := start; j < end; j++ {
+				if taken[j] {
+					overlaps = true
+					break
+				}
+			}
+			if overlaps {
+				continue
+			}
+			for j := start; j < end; j++ {
+				taken[j] = true
+			}
+			edits = append(edits, wordEdit{start, end, value})
 		}
+	}
+	if len(edits) == 0 {
+		return doc
+	}
+
+	// Баруунаас зүүн тийш: өмнөх засвар дараагийнхын координатыг хөдөлгөхгүй.
+	sortEditsDesc(edits)
+	for _, e := range edits {
+		doc = applyEditAcrossRuns(doc, segs, e.start, e.end, e.value)
 	}
 	return doc
 }
 
-// replaceOnceAcrossRuns нь түлхүүрийн ЭХНИЙ тохиолдлыг олж орлуулна —
-// run-уудын хилийг даван. Олдоогүй бол false.
-func replaceOnceAcrossRuns(doc, key, value string) (string, bool) {
-	matches := wordTextRe.FindAllStringSubmatchIndex(doc, -1)
-	if len(matches) == 0 {
-		return doc, false
-	}
+type wordSeg struct{ docStart, docEnd, fullStart int }
 
-	// Харагдах бичвэрийг нийлүүлж, түлхүүрээ тэндээс олно.
-	var full strings.Builder
-	for _, m := range matches {
-		full.WriteString(doc[m[2]:m[3]])
-	}
-	start := strings.Index(full.String(), key)
-	if start < 0 {
-		return doc, false
-	}
-	end := start + len(key)
+type wordEdit struct {
+	start, end int
+	value      string
+}
 
-	// Оролцсон run бүрээс түлхүүрийн өөрт нь ногдох хэсгийг авч, орлуулах
-	// утгыг эхний оролцогчид суулгана.
+func sortEditsDesc(edits []wordEdit) {
+	for i := 1; i < len(edits); i++ {
+		for j := i; j > 0 && edits[j].start > edits[j-1].start; j-- {
+			edits[j], edits[j-1] = edits[j-1], edits[j]
+		}
+	}
+}
+
+// applyEditAcrossRuns нь full-координатын [start,end) мужийг value-ээр
+// сольж, оролцсон run бүрээс өөрийнх нь хэсгийг авна. XML бүтэц хэвээр.
+func applyEditAcrossRuns(doc string, segs []wordSeg, start, end int, value string) string {
+
 	var b strings.Builder
-	prev, cursor, inserted := 0, 0, false
-	for _, m := range matches {
-		segStart, segEnd := m[2], m[3]
-		segLen := segEnd - segStart
-		fullStart, fullEnd := cursor, cursor+segLen
-		cursor = fullEnd
-
+	prev, inserted := 0, false
+	for _, s := range segs {
+		segLen := s.docEnd - s.docStart
+		fullEnd := s.fullStart + segLen
 		lo, hi := start, end
-		if fullStart > lo {
-			lo = fullStart
+		if s.fullStart > lo {
+			lo = s.fullStart
 		}
 		if fullEnd < hi {
 			hi = fullEnd
 		}
 		if lo >= hi {
-			continue // энэ run түлхүүрт оролцоогүй
+			continue
 		}
-		removeStart := segStart + (lo - fullStart)
-		removeEnd := segStart + (hi - fullStart)
+		removeStart := s.docStart + (lo - s.fullStart)
+		removeEnd := s.docStart + (hi - s.fullStart)
 		b.WriteString(doc[prev:removeStart])
 		if !inserted {
 			b.WriteString(value)
@@ -159,7 +202,7 @@ func replaceOnceAcrossRuns(doc, key, value string) (string, bool) {
 		prev = removeEnd
 	}
 	b.WriteString(doc[prev:])
-	return b.String(), true
+	return b.String()
 }
 
 // xmlEscape — орлуулах утга нь БИЧВЭР, XML биш: нэрэндээ & агуулсан

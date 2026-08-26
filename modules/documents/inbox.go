@@ -34,6 +34,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/jackc/pgx/v5"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -100,6 +102,11 @@ func (m *DocumentsModule) eidRegOf(ctx context.Context, userID string) string {
 	if err := m.db.QueryRow(ctx,
 		`SELECT COALESCE(reg_number, '') FROM user_eid_identities WHERE user_id = $1`,
 		userID).Scan(&reg); err != nil {
+		// eID-гүй хэрэглэгч — хэвийн зам, чимээгүй. Харин холболтын алдааг
+		// залгивал регистрээр ирсэн гэрээ нь «алга» мэт харагдана — лог үлдээе.
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("documents: eid reg lookup failed", "user_id", userID, "err", err)
+		}
 		return ""
 	}
 	return reg
