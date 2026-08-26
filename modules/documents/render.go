@@ -82,7 +82,14 @@ func (f Fields) dateText() string {
 // бичсэн хүн бичвэрээ буруу гэж мэдэхгүй; байрандаа үлдвэл дэлгэц дээр
 // `{{албан_тушаал}}` гэж харагдаж, засах шаардлагатайг өөрөө хэлнэ.
 func Substitute(body string, f Fields) string {
-	repl := []string{
+	return strings.NewReplacer(substitutionPairs(f)...).Replace(body)
+}
+
+// substitutionPairs нь орлуулгын НЭГ жагсаалт — энгийн бичвэр ба Word
+// загвар хоёул үүнээс уншина: хоёр газарт хоёр жагсаалт нь нэг өдөр
+// зөрдөг.
+func substitutionPairs(f Fields) []string {
+	return []string{
 		// ЕРӨНХИЙ НЭРС. Энэ апп нь сургуулийнх биш — тал нь нийлүүлэгч,
 		// түрээслэгч, яам байж болно — тул орлуулга нь юуг орлуулж байгаагаа
 		// нэрлэх ёстой. Доорх сургуулийн нэрс нь энэ файл eduge-ээс
@@ -105,7 +112,6 @@ func Substitute(body string, f Fields) string {
 		"{{гэрчилгээ}}", f.Title,
 		"{{огноо}}", f.dateText(),
 	}
-	return strings.NewReplacer(repl...).Replace(body)
 }
 
 // SignatureBlock нь аль хэдийн зурагдсан гарын үсгийн гэрчлэл — сургуулийн хувь

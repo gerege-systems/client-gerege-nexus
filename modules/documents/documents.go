@@ -452,6 +452,7 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 			// JSON-ийнхоос том: Excel файл ирнэ.
 			pr.With(parties, limitBodyTo(importBodyLimit)).Post("/{id}/parties/import", m.importPartiesHandler)
 			pr.With(read).Get("/parties/import-template.xlsx", m.importTemplateHandler)
+			pr.With(read).Get("/contract-template.docx", m.wordTemplateHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
 			pr.With(parties).Post("/{id}/parties/{pid}/signatories", m.addSignatoryHandler)
 			pr.With(parties).Delete("/{id}/parties/{pid}/signatories/{sid}", m.removeSignatoryHandler)

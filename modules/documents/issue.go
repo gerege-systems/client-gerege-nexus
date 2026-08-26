@@ -262,7 +262,13 @@ func (m *DocumentsModule) issueOne(ctx context.Context, tenantID, masterID strin
 	var text string
 	var pdf []byte
 	var sum, fname string
-	if master != nil {
+	if master != nil && master.Word != nil {
+		var err error
+		fname, text, pdf, sum, err = m.freezeFromWord(ctx, master, shape, issuer, recParty, body)
+		if err != nil {
+			return "", err
+		}
+	} else if master != nil {
 		if strings.TrimSpace(body) != "" {
 			text, _, _, _ = m.freezeTextFor(shape, issuer, recParty, body)
 		}

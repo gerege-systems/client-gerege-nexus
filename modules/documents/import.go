@@ -272,5 +272,19 @@ func (m *DocumentsModule) importTemplateHandler(w http.ResponseWriter, r *http.R
 	_ = book.Write(w)
 }
 
+// wordTemplateHandler нь бөглөж эхлэх Word загварыг өгнө.
+func (m *DocumentsModule) wordTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	docx, err := contractTemplateDocx()
+	if err != nil {
+		nexus.Error(w, http.StatusInternalServerError, "загвар үүссэнгүй")
+		return
+	}
+	w.Header().Set("Content-Type",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+	w.Header().Set("Content-Disposition", `attachment; filename="gerege-zagvar.docx"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(docx)
+}
+
 // декодерын хэрэглээгүй сануулгаас зайлсхийе.
 var _ = json.Marshal

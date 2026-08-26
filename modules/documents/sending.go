@@ -279,8 +279,17 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 		var text string
 		var pdf []byte
 		var sum, name string
-		if master != nil {
-			// Хавсаргасан мастер: тал бүр ИЖИЛ байт авна. Бичвэр байвал
+		if master != nil && master.Word != nil {
+			// Word загвар: ЭНЭ талын мэдээллээр орлуулаад PDF болгоно —
+			// хүн бүрийн хувь өөрийн нэртэй, форматаа хадгалсан.
+			var err error
+			name, text, pdf, sum, err = m.freezeFromWord(r.Context(), master, shape, issuer, p, body)
+			if err != nil {
+				skips = append(skips, sendSkip{p.ID, p.DisplayName, err.Error()})
+				continue
+			}
+		} else if master != nil {
+			// Хавсаргасан PDF: тал бүр ИЖИЛ байт авна. Бичвэр байвал
 			// орлуулгатайгаар хадгална — дэлгэц PDF-ийн хажууд харуулж
 			// болно — гэхдээ гарын үсгийн хамрах зүйл нь ФАЙЛ.
 			if strings.TrimSpace(body) != "" {
@@ -318,15 +327,19 @@ func (m *DocumentsModule) sendHandler(w http.ResponseWriter, r *http.Request) {
 	nexus.JSON(w, http.StatusOK, map[string]any{"sent": sent, "skipped": skips})
 }
 
-// attachedFile нь илгээлтийн мастер болох хавсралт.
+// attachedFile нь илгээлтийн мастер болох хавсралт — PDF эсвэл Word загвар.
 type attachedFile struct {
 	FileName string
-	PDF      []byte
+	// PDF: тал бүр ИЖИЛ байт авна (гаргагч зурсан бол гарын үсэгтэй нь).
+	PDF []byte
+	// Word: тал бүрд ОРЛУУЛААД PDF болгоно — хүн бүрийн хувь өөр байт.
+	Word []byte
 }
 
-// attachedMaster нь баримтын хавсралтыг уншина — ГАРЫН ҮСЭГТЭЙ хувь нь
-// байвал түүнийг: тал бүрийн зурах байт гаргагчийн гарын үсгийг хамрах
-// ёстой. Хавсралтгүй бол nil, nil — бичвэрээс зурах зам хэвээр.
+// attachedMaster нь баримтын хавсралтыг уншина. PDF бол гарын үсэгтэй хувь
+// нь давуу: тал бүрийн зурах байт гаргагчийн гарын үсгийг хамрах ёстой.
+// Word бол загвар өөрөө — гарын үсэг нь тал бүрийн PDF дээр л зурагдана.
+// Хавсралтгүй бол nil, nil — бичвэрээс зурах зам хэвээр.
 func (m *DocumentsModule) attachedMaster(ctx context.Context, tenantID, docID string) (*attachedFile, error) {
 	var name string
 	var content, signed []byte
@@ -340,6 +353,9 @@ func (m *DocumentsModule) attachedMaster(ctx context.Context, tenantID, docID st
 	if err != nil {
 		return nil, err
 	}
+	if isWordTemplate(name, content) {
+		return &attachedFile{FileName: name, Word: content}, nil
+	}
 	if len(signed) > 0 {
 		return &attachedFile{FileName: name, PDF: signed}, nil
 	}
@@ -347,6 +363,36 @@ func (m *DocumentsModule) attachedMaster(ctx context.Context, tenantID, docID st
 		return &attachedFile{FileName: name, PDF: content}, nil
 	}
 	return nil, nil
+}
+
+// freezeFromWord нь Word загвараас НЭГ талын хөлдсөн PDF-ийг гаргана:
+// орлуулга → хөрвүүлэлт. Нэр нь .docx-оо .pdf болгоно — хүлээн авагч Word
+// биш, PDF авч байгаа.
+func (m *DocumentsModule) freezeFromWord(ctx context.Context, master *attachedFile,
+	shape contractShape, issuer, p Party, body string) (name, text string, pdf []byte, sum string, err error) {
+
+	fields := Fields{
+		SchoolName:   p.DisplayName,
+		SchoolCode:   p.RegistrationNumber,
+		Aimag:        p.AddressLine,
+		Principal:    signatoryName(p),
+		ContractCode: shape.Number,
+		Title:        shape.Title,
+		Date:         time.Now(),
+	}
+	substituted, err := substituteDocx(master.Word, fields)
+	if err != nil {
+		return "", "", nil, "", err
+	}
+	pdf, err = convertDocxToPDF(ctx, substituted, master.FileName)
+	if err != nil {
+		return "", "", nil, "", err
+	}
+	if strings.TrimSpace(body) != "" {
+		text = Substitute(body, fields)
+	}
+	name = strings.TrimSuffix(master.FileName, ".docx") + ".pdf"
+	return name, text, pdf, domain.Digest(pdf), nil
 }
 
 // freezeTextFor нь зөвхөн бичвэрийн орлуулгыг хийнэ — PDF зурахгүй.
