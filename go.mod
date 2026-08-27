@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/gerege-systems/open-gerege-core v1.10.0
-	github.com/gerege-systems/open-gerege-nexus/backend v1.14.0
+	github.com/gerege-systems/open-gerege-nexus/backend v1.15.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
@@ -82,17 +82,3 @@ require (
 // package — but the image builds it, and the schema it applies has to come
 // from the same core version everything else here is compiled against.
 tool github.com/gerege-systems/open-gerege-nexus/backend/cmd/migrate
-
-// ⚠️ ТҮР ЗУУРЫН — цөм tag авмагц ЭНЭ МӨРИЙГ ХАС.
-//
-// Өртөөгийн суваг ба холбогчийн апп цөмөөс гарсан өөрчлөлт цөмийн салаанд
-// (`refactor/internal-operator`) сууж байгаа бөгөөд хараахан хувилбар
-// аваагүй. Тэр өөрчлөлт нь SDK-гаас `pkg/urtuu`, `nexus.Link`,
-// `nexus.PeerDirectory`, `nexus.MeetingBooker` дөрвийг хасч, `tenant` гэдэг
-// үгийг `workspace` болгосон тул энэ репо хуучин tag дээр компайл болохгүй —
-// шинэ дээр л болно.
-//
-// Хийх зүйл: цөм гармагц (1) энэ мөрийг устгах, (2) дээрх require-ийг тэр
-// хувилбар руу зөөх, (3) `go mod tidy`. Үүнийг хийтэл энэ репогийн CI улаан
-// байна: тэр job зөвхөн энэ репог clone хийдэг тул доорх зам байхгүй.
-replace github.com/gerege-systems/open-gerege-nexus/backend => ../open-gerege-nexus/backend
