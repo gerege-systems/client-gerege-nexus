@@ -180,8 +180,8 @@ func (s *Store) CreateGrant(_ context.Context, grant reports.Grant) (string, err
 		if stored.revoked {
 			continue
 		}
-		if stored.GrantorTenantID == grant.GrantorTenantID &&
-			stored.GranteeTenantID == grant.GranteeTenantID &&
+		if stored.GrantorWorkspaceID == grant.GrantorWorkspaceID &&
+			stored.GranteeWorkspaceID == grant.GranteeWorkspaceID &&
 			stored.ReportKey == grant.ReportKey {
 			return "", reports.ErrGrantExists
 		}
@@ -195,7 +195,7 @@ func (s *Store) AcceptGrant(_ context.Context, grantorTenantID, id, _ string) (s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, stored := range s.grants {
-		if stored.ID != id || stored.GrantorTenantID != grantorTenantID {
+		if stored.ID != id || stored.GrantorWorkspaceID != grantorTenantID {
 			continue
 		}
 		if stored.accepted || stored.revoked {
@@ -215,10 +215,10 @@ func (s *Store) RevokeGrant(_ context.Context, tenantID, id string) (string, str
 			continue
 		}
 		switch tenantID {
-		case stored.GrantorTenantID:
+		case stored.GrantorWorkspaceID:
 			s.grants[i].revoked = true
 			return stored.ReportKey, reports.SideGiven, nil
-		case stored.GranteeTenantID:
+		case stored.GranteeWorkspaceID:
 			s.grants[i].revoked = true
 			return stored.ReportKey, reports.SideReceived, nil
 		}

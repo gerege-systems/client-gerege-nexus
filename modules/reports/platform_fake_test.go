@@ -232,7 +232,7 @@ func (g *fakeGrants) List(_ context.Context, tenantID string) ([]nexus.ReportGra
 	defer g.mu.Unlock()
 	found := make([]nexus.ReportGrant, 0, len(g.byID))
 	for _, grant := range g.byID {
-		if grant.GrantorTenantID == tenantID || grant.GranteeTenantID == tenantID {
+		if grant.GrantorWorkspaceID == tenantID || grant.GranteeWorkspaceID == tenantID {
 			found = append(found, grant)
 		}
 	}
@@ -249,8 +249,8 @@ func (g *fakeGrants) Request(_ context.Context, grant nexus.ReportGrant) (string
 	for _, existing := range g.byID {
 		live := existing.RevokedAt == nil
 		if live && existing.ReportKey == grant.ReportKey &&
-			existing.GrantorTenantID == grant.GrantorTenantID &&
-			existing.GranteeTenantID == grant.GranteeTenantID {
+			existing.GrantorWorkspaceID == grant.GrantorWorkspaceID &&
+			existing.GranteeWorkspaceID == grant.GranteeWorkspaceID {
 			return "", nexus.ErrReportGrantExists
 		}
 	}
@@ -264,7 +264,7 @@ func (g *fakeGrants) Accept(_ context.Context, grantorTenantID, id, _ string) (s
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	grant, found := g.byID[id]
-	if !found || grant.GrantorTenantID != grantorTenantID ||
+	if !found || grant.GrantorWorkspaceID != grantorTenantID ||
 		grant.RevokedAt != nil || grant.AcceptedAt != nil {
 		return "", nexus.ErrReportGrantNotPending
 	}
@@ -279,14 +279,14 @@ func (g *fakeGrants) Revoke(_ context.Context, tenantID, id string) (string, str
 	defer g.mu.Unlock()
 	grant, found := g.byID[id]
 	if !found || grant.RevokedAt != nil ||
-		(grant.GrantorTenantID != tenantID && grant.GranteeTenantID != tenantID) {
+		(grant.GrantorWorkspaceID != tenantID && grant.GranteeWorkspaceID != tenantID) {
 		return "", "", nexus.ErrReportGrantNotFound
 	}
 	revoked := time.Now()
 	grant.RevokedAt = &revoked
 	g.byID[id] = grant
 	side := "received"
-	if grant.GrantorTenantID == tenantID {
+	if grant.GrantorWorkspaceID == tenantID {
 		side = "given"
 	}
 	return grant.ReportKey, side, nil

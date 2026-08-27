@@ -22,8 +22,8 @@ import (
 	"time"
 
 	domain "github.com/gerege-systems/client-gerege-nexus/domain/urtuu"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,7 +34,7 @@ import (
 const maxTaskBody = contract.MaxPayloadBytes
 
 func (m *Module) handleListTasks(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -145,7 +145,7 @@ type createRequest struct {
 // fan-out that half happened would leave provinces doing work the ministry has
 // no record of asking for.
 func (m *Module) handleCreateTask(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -224,7 +224,7 @@ func (m *Module) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	status := domain.InitialStatus(len(request.PeerIDs))
 
-	ctx := nexus.WithTenantID(r.Context(), tenantID)
+	ctx := nexus.WithWorkspaceID(r.Context(), tenantID)
 	tx, err := m.db.Begin(ctx)
 	if err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "could not raise the task")
@@ -323,7 +323,7 @@ func (m *Module) handleDelegate(w http.ResponseWriter, r *http.Request) {
 		deadline = request.Deadline
 	}
 
-	ctx := nexus.WithTenantID(r.Context(), tenantID)
+	ctx := nexus.WithWorkspaceID(r.Context(), tenantID)
 	tx, err := m.db.Begin(ctx)
 	if err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "could not delegate the task")
@@ -418,7 +418,7 @@ func (m *Module) handleAssign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := m.db.Exec(nexus.WithTenantID(r.Context(), tenantID),
+	if _, err := m.db.Exec(nexus.WithWorkspaceID(r.Context(), tenantID),
 		`UPDATE urtuu_tasks SET assigned_user_id = $2, updated_at = NOW() WHERE id = $1`,
 		id, request.UserID); err != nil {
 		nexus.Error(w, http.StatusInternalServerError, "could not assign the task")
@@ -486,7 +486,7 @@ func (m *Module) transition(w http.ResponseWriter, r *http.Request,
 		}
 	}
 	if answer != "" {
-		if _, err := m.db.Exec(nexus.WithTenantID(r.Context(), tenantID),
+		if _, err := m.db.Exec(nexus.WithWorkspaceID(r.Context(), tenantID),
 			`UPDATE urtuu_tasks SET answer = $2, updated_at = NOW() WHERE id = $1`,
 			id, answer); err != nil {
 			nexus.Error(w, http.StatusInternalServerError, "could not record the answer")
@@ -505,7 +505,7 @@ func (m *Module) transition(w http.ResponseWriter, r *http.Request,
 			nexus.Error(w, http.StatusInternalServerError, "could not record the attachment")
 			return
 		}
-		if _, err := m.db.Exec(nexus.WithTenantID(r.Context(), tenantID),
+		if _, err := m.db.Exec(nexus.WithWorkspaceID(r.Context(), tenantID),
 			`UPDATE urtuu_tasks SET evidence = $2, updated_at = NOW() WHERE id = $1`,
 			id, encoded); err != nil {
 			nexus.Error(w, http.StatusInternalServerError, "could not record the attachment")
@@ -535,11 +535,11 @@ func (m *Module) transition(w http.ResponseWriter, r *http.Request,
 // handleBoard is the app's front page: what is queued, what is late, and
 // whether the links are carrying anything.
 func (m *Module) handleBoard(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
-	ctx := nexus.WithTenantID(r.Context(), tenantID)
+	ctx := nexus.WithWorkspaceID(r.Context(), tenantID)
 
 	// Counts by status and direction in one pass. Two queries would be two
 	// moments, and a board that adds up to a different total than its own rows
@@ -626,7 +626,7 @@ type LinkHealth struct {
 // It read urtuu_peers and urtuu_deliveries directly until 2026-08-23, with a
 // note beside it arguing that the app and the transport "are one product split
 // by layer, sharing one schema and one tenant binding". They are — while they
-// share a repository. nexus.PeerDirectory carries the same five columns as a
+// share a repository. contract.PeerDirectory carries the same five columns as a
 // contract, which is what lets this app leave.
 func (m *Module) linkHealth(ctx context.Context, tenantID string) ([]LinkHealth, error) {
 	peers, err := m.peers.Peers(ctx, tenantID)
@@ -693,7 +693,7 @@ func (m *Module) treeProgress(ctx context.Context, tenantID string) ([]TreeProgr
 // ------------------------------------------------------------------ helpers
 
 func (m *Module) taskParty(w http.ResponseWriter, r *http.Request) (string, string, bool) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return "", "", false
 	}

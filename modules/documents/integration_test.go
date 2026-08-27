@@ -1968,7 +1968,7 @@ func TestTextThatCannotBeStoredIsRefusedNotBlamedOnUs(t *testing.T) {
 // three-approver contract into a one-signature one.
 func TestAnAbsentChainIsNotAnEmptyChain(t *testing.T) {
 	f := newFixture(t)
-	ctx := nexus.WithTenantID(context.Background(), f.tenantID)
+	ctx := nexus.WithWorkspaceID(context.Background(), f.tenantID)
 
 	if _, err := f.m.ReplaceWorkflow(context.Background(), f.tenantID, "CONTRACT", []WorkflowStep{
 		{Order: 1, Name: "Ня-бо", SignerRegNumber: "УБ99010111"},

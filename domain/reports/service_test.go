@@ -225,7 +225,7 @@ func TestOnlyTheOwnerAgreesAndEitherSideMayEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	if grant.GrantorTenantID != them || grant.CreatedBy != "user-1" {
+	if grant.GrantorWorkspaceID != them || grant.CreatedBy != "user-1" {
 		t.Fatalf("the request was recorded wrong: %+v", grant)
 	}
 	// The default scope is the narrow one, and the counterparty reference is

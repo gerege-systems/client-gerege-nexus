@@ -2,6 +2,22 @@
   "app_id": "io.gerege.nexus.urtuu",
   "entries": [
     {
+      "version": "1.1.0",
+      "released_at": "2026-08-27",
+      "kind": "feature",
+      "summary": {
+        "mn": "Суваг нь платформынх байхаа больж, аппын дотор орлоо: холбоос, гарын үсэг, дараалал, хүргэлт бүгд энэ аппын хамт суудаг, устдаг болов.",
+        "en": "The channel stopped being the platform's and moved inside the app: links, signatures, queues and delivery now install and uninstall with it."
+      },
+      "details": {
+        "mn": "Өмнө нь тээвэр цөмд байсан — nexus.Link илгээхэд, nexus.PeerDirectory уншихад — бөгөөд үндэслэл нь «сувгийг олон апп ашиглана» гэсэн таамаг байв. Гурван сарын турш ашиглагч нь ганц: энэ апп. Тиймээс цөмийн 00087 сувгийн зургаан хүснэгтийг хаяж, аппын 00002 тэднийг өөрийн болгов; дугтуйн гэрээ (pkg/urtuu) ба Link/PeerDirectory хоёр домэйн дотор орлоо. Суулгаагүй суулгац одоо дугтуй хүлээж авахаа больсон нь ялгаа: өмнө нь аппгүй ч дугтуй ирж, хадгалагдаж байсан. URTUU_SIGNING_KEY, RING_* тохиргоог одоо энэ бүтээгдэхүүн уншина; /.well-known/urtuu.json болон солилцооны хоёр цэгийг энэ модуль өөрөө мөнтөддөг.",
+        "en": "The transport used to be in the core — nexus.Link to send, nexus.PeerDirectory to read — on the argument that more than one app would use the ring. In three months exactly one did: this one. So core 00087 drops the channel's six tables and this app's 00002 takes them, and the envelope contract and both interfaces moved into the product's domain. One behaviour changed with them: an installation without the app no longer receives envelopes at all, where before they arrived, were verified and waited in the inbox. URTUU_SIGNING_KEY and the RING_* settings are read by this product now, and /.well-known/urtuu.json and the two exchange endpoints are mounted by this module."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    },
+    {
       "version": "1.0.0",
       "released_at": "2026-08-15",
       "kind": "feature",

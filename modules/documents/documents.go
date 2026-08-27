@@ -431,7 +431,7 @@ func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func
 }
 
 func (m *DocumentsModule) listDocumentsHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -500,7 +500,7 @@ func intParam(w http.ResponseWriter, query url.Values, name string) (int, bool) 
 }
 
 func (m *DocumentsModule) createDocumentHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -524,7 +524,7 @@ func (m *DocumentsModule) createDocumentHandler(w http.ResponseWriter, r *http.R
 }
 
 func (m *DocumentsModule) signWithDANHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -567,7 +567,7 @@ func (m *DocumentsModule) signWithDANHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *DocumentsModule) renameDocumentHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -598,7 +598,7 @@ func (m *DocumentsModule) renameDocumentHandler(w http.ResponseWriter, r *http.R
 }
 
 func (m *DocumentsModule) rejectDocumentHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

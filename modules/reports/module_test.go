@@ -113,8 +113,8 @@ func (f *fixture) as(tenantID string) chi.Router {
 	router := chi.NewRouter()
 	f.module.RegisterRoutes(router, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := nexus.WithTenantID(r.Context(), tenantID)
-			ctx = nexus.WithUser(ctx, nexus.UserClaims{UserID: f.userID, TenantID: tenantID, IsAdmin: true})
+			ctx := nexus.WithWorkspaceID(r.Context(), tenantID)
+			ctx = nexus.WithUser(ctx, nexus.UserClaims{UserID: f.userID, WorkspaceID: tenantID, IsAdmin: true})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})

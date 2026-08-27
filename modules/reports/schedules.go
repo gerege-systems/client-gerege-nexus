@@ -23,7 +23,7 @@ import (
 const maxScheduleBody = 16 << 10
 
 func (m *Module) handleListSchedules(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -43,7 +43,7 @@ func (m *Module) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -108,7 +108,7 @@ func (m *Module) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 // checked for shape here for the same reason a grant's is: an unparseable
 // identifier is a malformed request rather than a rule anybody broke.
 func (m *Module) schedule(w http.ResponseWriter, r *http.Request) (string, string, bool) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return "", "", false
 	}

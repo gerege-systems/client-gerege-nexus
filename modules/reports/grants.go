@@ -30,7 +30,7 @@ const maxGrantBody = 8 << 10
 // consolidated run reads, and a second reader here would be a second shape for
 // the same row.
 func (m *Module) handleListGrants(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -45,7 +45,7 @@ func (m *Module) handleListGrants(w http.ResponseWriter, r *http.Request) {
 
 // handleRequestGrant is the grantee asking to be shown a report.
 func (m *Module) handleRequestGrant(w http.ResponseWriter, r *http.Request) {
-	granteeTenantID, ok := nexus.RequireTenant(w, r)
+	granteeTenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -64,7 +64,7 @@ func (m *Module) handleRequestGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.record(r, granteeTenantID, "reports.grant_requested", grant.ReportKey, map[string]any{
-		"grant_id": grant.ID, "grantor_tenant_id": grant.GrantorTenantID, "scope": grant.Scope,
+		"grant_id": grant.ID, "grantor_tenant_id": grant.GrantorWorkspaceID, "scope": grant.Scope,
 	})
 	nexus.JSON(w, http.StatusCreated, map[string]any{"id": grant.ID})
 }
@@ -137,7 +137,7 @@ func (m *Module) handleRunConsolidated(w http.ResponseWriter, r *http.Request) {
 // through any API; this slice of it is, because §3.5 requires the data owner to
 // be able to see it and a trail they cannot read is not a control.
 func (m *Module) handleAccessHistory(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -160,7 +160,7 @@ func (m *Module) handleAccessHistory(w http.ResponseWriter, r *http.Request) {
 // identifier is a malformed request, in the same class as a body that is not
 // JSON, and the answer is the same 400 either way.
 func (m *Module) grantParty(w http.ResponseWriter, r *http.Request) (string, string, bool) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return "", "", false
 	}

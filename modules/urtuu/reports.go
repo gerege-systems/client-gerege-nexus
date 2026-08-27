@@ -27,13 +27,14 @@ import (
 	"log/slog"
 	"time"
 
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
 )
 
 // The directory is handed to each report rather than fetched inside it: a
 // report runs minutes or months after construction, and a dependency looked up
 // at that moment is one nothing checks at boot.
-func registerReports(peers nexus.PeerDirectory) {
+func registerReports(peers contract.PeerDirectory) {
 	nexus.RegisterReport(taskCompletion{peers})
 	nexus.RegisterReport(slaBreaches{peers})
 	nexus.RegisterReport(channelLoad{peers})
@@ -57,7 +58,7 @@ func fullOnly() []string { return []string{nexus.ReportScopeFull} }
 
 // ------------------------------------------------------- task completion
 
-type taskCompletion struct{ peers nexus.PeerDirectory }
+type taskCompletion struct{ peers contract.PeerDirectory }
 
 func (taskCompletion) Key() string      { return "urtuu.task_completion" }
 func (taskCompletion) App() string      { return ID }
@@ -126,7 +127,7 @@ func (r taskCompletion) Run(ctx context.Context, q nexus.Querier, p nexus.Params
 		 LIMIT 500`
 
 	rows, err := q.Query(ctx, query,
-		nexus.TenantOf(ctx), p.Time("period_from"), p.Time("period_to"))
+		nexus.WorkspaceOf(ctx), p.Time("period_from"), p.Time("period_to"))
 	if err != nil {
 		return nexus.Result{}, err
 	}
@@ -160,7 +161,7 @@ func (r taskCompletion) Run(ctx context.Context, q nexus.Querier, p nexus.Params
 
 // ------------------------------------------------------------ SLA breaches
 
-type slaBreaches struct{ peers nexus.PeerDirectory }
+type slaBreaches struct{ peers contract.PeerDirectory }
 
 func (slaBreaches) Key() string      { return "urtuu.sla_breaches" }
 func (slaBreaches) App() string      { return ID }
@@ -223,7 +224,7 @@ func (r slaBreaches) Run(ctx context.Context, q nexus.Querier, p nexus.Params) (
 		 LIMIT 500`
 
 	rows, err := q.Query(ctx, query,
-		nexus.TenantOf(ctx), p.Time("period_from"), p.Time("period_to"))
+		nexus.WorkspaceOf(ctx), p.Time("period_from"), p.Time("period_to"))
 	if err != nil {
 		return nexus.Result{}, err
 	}
@@ -250,7 +251,7 @@ func (r slaBreaches) Run(ctx context.Context, q nexus.Querier, p nexus.Params) (
 
 // ------------------------------------------------------------ channel load
 
-type channelLoad struct{ peers nexus.PeerDirectory }
+type channelLoad struct{ peers contract.PeerDirectory }
 
 func (channelLoad) Key() string      { return "urtuu.channel_load" }
 func (channelLoad) App() string      { return ID }
@@ -296,7 +297,7 @@ func (r channelLoad) Run(ctx context.Context, _ nexus.Querier, p nexus.Params) (
 	// 2026-08-23. The contract answers the one question a report can ask about
 	// them, and the engine's Querier is unused here because there is nothing of
 	// this app's to join it to.
-	load, err := r.peers.DeliveryLoad(ctx, nexus.TenantOf(ctx), p.Time("period_from"), p.Time("period_to"))
+	load, err := r.peers.DeliveryLoad(ctx, nexus.WorkspaceOf(ctx), p.Time("period_from"), p.Time("period_to"))
 	if err != nil {
 		return nexus.Result{}, err
 	}
@@ -321,7 +322,7 @@ func (r channelLoad) Run(ctx context.Context, _ nexus.Querier, p nexus.Params) (
 // not part of the snapshot the report is measuring. A deployment that cannot
 // answer gets a report with the ids left as labels rather than no report — see
 // peerLabel.
-func reportPeerNames(ctx context.Context, directory nexus.PeerDirectory) map[string]string {
+func reportPeerNames(ctx context.Context, directory contract.PeerDirectory) map[string]string {
 	if directory == nil {
 		// A report constructed without one. Nothing in this binary does it —
 		// registerReports hands every report the same directory — and a nil
@@ -330,7 +331,7 @@ func reportPeerNames(ctx context.Context, directory nexus.PeerDirectory) map[str
 		// ids.
 		return nil
 	}
-	peers, err := directory.Peers(ctx, nexus.TenantOf(ctx))
+	peers, err := directory.Peers(ctx, nexus.WorkspaceOf(ctx))
 	if err != nil {
 		slog.Warn("urtuu: the links could not be read; a report will name peers by id", "error", err)
 		return nil

@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/gerege-systems/open-gerege-core v1.10.0
-	github.com/gerege-systems/open-gerege-nexus/backend v1.14.0
+	github.com/gerege-systems/open-gerege-nexus/backend v1.15.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0

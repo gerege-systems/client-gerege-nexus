@@ -7,9 +7,11 @@
 -- эцсийн хэлбэрээр нь дахин зарлав, organisation-ийн 00001-ийн яг тэр арга.
 --
 -- Юу энд байхгүй вэ: `urtuu_peers`, `urtuu_deliveries`, `urtuu_inbox`,
--- `urtuu_request_codes`, `urtuu_peer_codes`. Тэдгээр нь сувгийнх —
--- холбоос, гарын үсэг, дараалал, дахин оролдлого — бөгөөд платформынх
--- хэвээр. Апп тэднийг nexus.PeerDirectory-гээр уншина, ADR 0004-ийн Саад 2.
+-- `urtuu_outbox`, `urtuu_request_codes`, `urtuu_peer_codes`. Тэдгээр нь
+-- сувгийнх — холбоос, гарын үсэг, дараалал, дахин оролдлого — бөгөөд энэ
+-- файл бичигдэх үед платформынх байв. 2026-08-27-нд суваг ч аппд ирсэн тул
+-- тэдгээр нь одоо **00002**-т байна; энэ файлаас хойш үүсдэг гэдэг нь доорх
+-- гурван гадаад түлхүүр яагаад тэнд байгаагийн шалтгаан.
 --
 -- Бүгд `IF NOT EXISTS`: энэ түүх нь платформын хуулбарыг аль хэдийн үүрсэн
 -- өгөгдлийн сан дээр ажиллана.
@@ -30,9 +32,14 @@ CREATE TABLE IF NOT EXISTS urtuu_tasks (
     -- Хоёр талын аль нэг нь: ирсэн ажил origin_peer_id-тэй, өгсөн ажил
     -- target_peer_id-тэй, дотоод ажил хоёулангүй. Гуравдагч байдал байхгүйг
     -- urtuu_tasks_one_direction барина.
-    origin_peer_id   UUID REFERENCES urtuu_peers(id) ON DELETE SET NULL,
+    -- Гадаад түлхүүр нь энд БИШ, 00002-т. Сувгийн `urtuu_peers` нь цөмийнх
+    -- байхад энэ файл бичигдсэн тул REFERENCES нь энд байсан; 00087-оор суваг
+    -- аппд ирснээр тэр хүснэгт 00002-т үүсдэг болсон — өөрөөр хэлбэл ЭНЭ
+    -- файлаас ХОЙШ. Цэвэр өгөгдлийн сан дээр 00001 нь байхгүй хүснэгтийг иш
+    -- татаж унана.
+    origin_peer_id   UUID,
     origin_task_id   TEXT NOT NULL DEFAULT '',
-    target_peer_id   UUID REFERENCES urtuu_peers(id) ON DELETE SET NULL,
+    target_peer_id   UUID,
     parent_task_id   UUID REFERENCES urtuu_tasks(id) ON DELETE CASCADE,
     origin_chain     TEXT[] NOT NULL DEFAULT '{}',
     status           TEXT NOT NULL DEFAULT 'RECEIVED',
@@ -86,7 +93,8 @@ CREATE TABLE IF NOT EXISTS urtuu_task_events (
     to_status     TEXT NOT NULL,
     -- Нэг үйлдлийг хүн эсвэл нөгөө суулгац хийнэ, хоёулаа биш.
     actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    actor_peer_id UUID REFERENCES urtuu_peers(id) ON DELETE SET NULL,
+    -- 00002-т FK болно, дээрх хоёрын адил шалтгаанаар.
+    actor_peer_id UUID,
     note          TEXT NOT NULL DEFAULT '',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

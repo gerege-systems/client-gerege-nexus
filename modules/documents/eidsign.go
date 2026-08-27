@@ -473,7 +473,7 @@ func (m *DocumentsModule) PollEIDSignature(ctx context.Context, tenantID, docID,
 }
 
 func (m *DocumentsModule) startEIDSignatureHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -505,7 +505,7 @@ func (m *DocumentsModule) startEIDSignatureHandler(w http.ResponseWriter, r *htt
 }
 
 func (m *DocumentsModule) pollEIDSignatureHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

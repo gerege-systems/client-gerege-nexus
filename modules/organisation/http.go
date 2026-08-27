@@ -42,14 +42,14 @@ type (
 )
 
 func (m *Module) handleListPeople(w http.ResponseWriter, r *http.Request) {
-	if _, ok := nexus.RequireTenant(w, r); !ok {
+	if _, ok := nexus.RequireWorkspace(w, r); !ok {
 		return
 	}
 	// Across every organisation this session is active in, which is just the
 	// one it is acting in unless somebody has asked for more. The row-level
 	// policies allow exactly the same set, so this widens what is asked for
 	// without widening what could be reached.
-	people, err := m.svc.People(r.Context(), nexus.AllowedTenants(r.Context()))
+	people, err := m.svc.People(r.Context(), nexus.AllowedWorkspaces(r.Context()))
 	if err != nil {
 		fail(w, r, err)
 		return
@@ -58,7 +58,7 @@ func (m *Module) handleListPeople(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) handleUpdatePerson(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -82,7 +82,7 @@ func (m *Module) handleReactivatePerson(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *Module) setPersonActive(w http.ResponseWriter, r *http.Request, active bool) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -103,10 +103,10 @@ func (m *Module) setPersonActive(w http.ResponseWriter, r *http.Request, active 
 // --- departments ------------------------------------------------------------
 
 func (m *Module) handleListDepartments(w http.ResponseWriter, r *http.Request) {
-	if _, ok := nexus.RequireTenant(w, r); !ok {
+	if _, ok := nexus.RequireWorkspace(w, r); !ok {
 		return
 	}
-	list, err := m.svc.Departments(r.Context(), nexus.AllowedTenants(r.Context()))
+	list, err := m.svc.Departments(r.Context(), nexus.AllowedWorkspaces(r.Context()))
 	if err != nil {
 		fail(w, r, err)
 		return
@@ -115,7 +115,7 @@ func (m *Module) handleListDepartments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) handleCreateDepartment(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -132,7 +132,7 @@ func (m *Module) handleCreateDepartment(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *Module) handleUpdateDepartment(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -156,7 +156,7 @@ func (m *Module) handleRestoreDepartment(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *Module) setDepartmentArchived(w http.ResponseWriter, r *http.Request, archived bool) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -172,7 +172,7 @@ func (m *Module) setDepartmentArchived(w http.ResponseWriter, r *http.Request, a
 }
 
 func (m *Module) handleDeleteDepartment(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

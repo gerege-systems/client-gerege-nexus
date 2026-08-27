@@ -24,8 +24,8 @@ import (
 	"time"
 
 	domain "github.com/gerege-systems/client-gerege-nexus/domain/urtuu"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -177,7 +177,7 @@ func (m *Module) listTasks(ctx context.Context, tenantID string, filter taskFilt
 		where = append(where, "t.deadline IS NOT NULL AND t.deadline < NOW() AND t.status <> 'CLOSED'")
 	}
 
-	rows, err := m.db.Query(nexus.WithTenantID(ctx, tenantID),
+	rows, err := m.db.Query(nexus.WithWorkspaceID(ctx, tenantID),
 		`SELECT`+taskColumns+taskFrom+` WHERE `+strings.Join(where, " AND ")+
 			` ORDER BY t.created_at DESC LIMIT 500`, args...)
 	if err != nil {
@@ -228,7 +228,7 @@ func (m *Module) nameAssignees(ctx context.Context, tenantID string, tasks []Tas
 }
 
 func (m *Module) getTask(ctx context.Context, tenantID, id string) (Task, error) {
-	rows, err := m.db.Query(nexus.WithTenantID(ctx, tenantID),
+	rows, err := m.db.Query(nexus.WithWorkspaceID(ctx, tenantID),
 		`SELECT`+taskColumns+taskFrom+` WHERE t.tenant_id = $1 AND t.id = $2`, tenantID, id)
 	if err != nil {
 		return Task{}, err
@@ -249,7 +249,7 @@ func (m *Module) getTask(ctx context.Context, tenantID, id string) (Task, error)
 }
 
 func (m *Module) taskEvents(ctx context.Context, tenantID, id string) ([]TaskEvent, error) {
-	rows, err := m.db.Query(nexus.WithTenantID(ctx, tenantID), `
+	rows, err := m.db.Query(nexus.WithWorkspaceID(ctx, tenantID), `
 		SELECT e.from_status, e.to_status, coalesce(e.actor_user_id::text, ''),
 		       coalesce(e.actor_peer_id::text, ''), e.note, e.created_at
 		  FROM urtuu_task_events e
@@ -308,7 +308,7 @@ func (m *Module) taskEvents(ctx context.Context, tenantID, id string) ([]TaskEve
 func (m *Module) move(ctx context.Context, tenantID, id string, to contract.TaskStatus,
 	actorUserID, actorPeerID, note string) (Task, error) {
 
-	ctx = nexus.WithTenantID(ctx, tenantID)
+	ctx = nexus.WithWorkspaceID(ctx, tenantID)
 	tx, err := m.db.Begin(ctx)
 	if err != nil {
 		return Task{}, err
@@ -371,7 +371,7 @@ func (m *Module) record(ctx context.Context, tx pgx.Tx, tenantID, taskID, status
 // It read urtuu_request_codes directly until 2026-08-23 on the argument that
 // "the two packages are one product split by layer, sharing one schema" — true
 // while both live in one repository and the reason ADR 0004 gave for this app
-// staying in it. nexus.PeerDirectory is that argument turned into a contract.
+// staying in it. contract.PeerDirectory is that argument turned into a contract.
 //
 // What comes back is the domain's RequestCode: what the rules ask of a code —
 // its name in every language, its norm, its promise and whether it is in use.
@@ -383,8 +383,18 @@ func (m *Module) lookupCode(ctx context.Context, tenantID, code string) (domain.
 	if !ok {
 		return domain.RequestCode{}, pgx.ErrNoRows
 	}
+	// The wire record carries the norm as a Duration and the domain wants
+	// seconds-or-nothing, because a norm of zero and no norm at all are
+	// different facts to a deadline. Zero is what "no norm" looks like on the
+	// wire — see wire.RequestCode.DefaultSLA — so this is where the two
+	// spellings meet.
+	var sla *int64
+	if found.DefaultSLA > 0 {
+		seconds := int64(found.DefaultSLA.Seconds())
+		sla = &seconds
+	}
 	return domain.RequestCode{
-		Code: found.Code, Names: found.Names, SLA: found.SLA,
+		Code: found.Code, Names: found.Names, SLA: sla,
 		Line: found.Line, Active: found.Active, Source: found.Source,
 	}, nil
 }

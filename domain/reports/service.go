@@ -273,14 +273,14 @@ func (s *Service) RequestGrant(ctx context.Context, granteeTenantID string, requ
 	}
 
 	grant := Grant{
-		GrantorTenantID: grantorTenantID,
-		GranteeTenantID: granteeTenantID,
-		ReportKey:       report.Key,
-		Scope:           scope,
-		CounterpartyRef: counterpartyRef,
-		ValidUntil:      validUntil,
-		Note:            trimmed(request.Note),
-		CreatedBy:       actorFrom(ctx),
+		GrantorWorkspaceID: grantorTenantID,
+		GranteeWorkspaceID: granteeTenantID,
+		ReportKey:          report.Key,
+		Scope:              scope,
+		CounterpartyRef:    counterpartyRef,
+		ValidUntil:         validUntil,
+		Note:               trimmed(request.Note),
+		CreatedBy:          actorFrom(ctx),
 	}
 	id, err := s.store.CreateGrant(ctx, grant)
 	if err != nil {

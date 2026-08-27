@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -126,8 +126,8 @@ func newSite(t *testing.T, pool *pgxpool.Pool, name string) *site {
 	// organisation as one of its members.
 	asMember := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := nexus.WithTenantID(r.Context(), tenantID)
-			ctx = nexus.WithUser(ctx, nexus.UserClaims{UserID: userID, TenantID: tenantID})
+			ctx := nexus.WithWorkspaceID(r.Context(), tenantID)
+			ctx = nexus.WithUser(ctx, nexus.UserClaims{UserID: userID, WorkspaceID: tenantID})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -560,7 +560,7 @@ func TestTheThreeReportsRun(t *testing.T) {
 	child.call(http.MethodPost, "/api/v1/urtuu/tasks/"+work.ID+"/complete", nil, http.StatusOK)
 	carry(t, parent, child)
 
-	ctx := nexus.WithTenantID(context.Background(), parent.tenantID)
+	ctx := nexus.WithWorkspaceID(context.Background(), parent.tenantID)
 	params := nexus.NewParams(map[string]any{
 		"period_from": time.Now().Add(-24 * time.Hour),
 		"period_to":   time.Now().Add(24 * time.Hour),
@@ -578,7 +578,7 @@ func TestTheThreeReportsRun(t *testing.T) {
 	// module hands them: two of the three name peers with it and the third
 	// reads the outbox through it, so a nil one would be testing the empty
 	// answer rather than the report.
-	peers := nexus.PeerDirectory(parent.link)
+	peers := contract.PeerDirectory(parent.link)
 	for _, report := range []nexus.Report{taskCompletion{peers}, slaBreaches{peers}, channelLoad{peers}} {
 		t.Run(report.Key(), func(t *testing.T) {
 			result, err := report.Run(ctx, poolQuerier{pool}, params)
@@ -895,7 +895,7 @@ func TestTheDatabaseItselfRefusesAnUnansweredService(t *testing.T) {
 	}, http.StatusCreated)
 	id := created["id"].(string)
 
-	_, err := pool.Exec(nexus.WithTenantID(context.Background(), parent.tenantID),
+	_, err := pool.Exec(nexus.WithWorkspaceID(context.Background(), parent.tenantID),
 		`UPDATE urtuu_tasks SET status = 'COMPLETED' WHERE id = $1`, id)
 	if err == nil {
 		t.Fatal("a service request was marked complete with no answer, straight in SQL")

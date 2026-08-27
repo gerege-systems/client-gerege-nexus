@@ -269,7 +269,7 @@ func (m *Module) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Han
 }
 
 func (m *Module) handleCitizen(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -293,7 +293,7 @@ func (m *Module) handleCitizen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) handleCompany(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -342,7 +342,7 @@ func fail(w http.ResponseWriter, r *http.Request, err error) {
 // deliberately not here, and a screen that mentions the thing without saying
 // where it is would only send people looking through Settings.
 func (m *Module) handleConnections(w http.ResponseWriter, r *http.Request) {
-	if _, ok := nexus.RequireTenant(w, r); !ok {
+	if _, ok := nexus.RequireWorkspace(w, r); !ok {
 		return
 	}
 	nexus.JSON(w, http.StatusOK, m.svc.Connections())
@@ -355,7 +355,7 @@ func (m *Module) handleConnections(w http.ResponseWriter, r *http.Request) {
 // also the one place a deletion is not expected: an organisation should not be
 // able to tidy away the record of whose registry data it read.
 func (m *Module) handleHistory(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

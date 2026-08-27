@@ -106,9 +106,40 @@ services:
       # disagreeing about which product somebody is standing in front of.
       BRAND_NAME: ${BRAND_NAME:-}
 
-      # «Өртөө» — the cross-installation task channel (core docs/URTUU.md).
+      # ------------------------------------------------- external connectors
       #
-      # Without a key the channel is OFF and the platform starts normally: no
+      # The Google and Dropbox OAuth clients belong to whoever operates this
+      # deployment, not to each organisation: the consent screen is this
+      # product's, and asking every administrator to create a Google Cloud
+      # project is not a product. Left empty, the providers report themselves
+      # unavailable with the reason instead of offering a form that cannot work.
+      #
+      # The redirect URI to register with both is exactly
+      #   $PUBLIC_ORIGIN/api/v1/integrations/oauth/callback
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      DROPBOX_OAUTH_CLIENT_ID: ${DROPBOX_OAUTH_CLIENT_ID:-}
+      DROPBOX_OAUTH_CLIENT_SECRET: ${DROPBOX_OAUTH_CLIENT_SECRET:-}
+      # A webhook target is an address an administrator types in and this
+      # server connects to, from inside the network. Loopback, private,
+      # link-local and reserved addresses are refused unless a self-hosted
+      # operator deliberately allows them — otherwise a connector is a way to
+      # have the platform fetch the cloud metadata service and show the answer.
+      INTEGRATION_ALLOW_PRIVATE_TARGETS: ${INTEGRATION_ALLOW_PRIVATE_TARGETS:-false}
+      # The key that seals a stored credential. It is the PLATFORM's — one
+      # cipher per deployment, reached through nexus.SecretSealer — and is
+      # listed here because this compose file is what puts it in the container.
+      # Without it a connector cannot be saved at all, which is the visible
+      # failure rather than a credential in the clear.
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-}
+
+      # «Өртөө» — the cross-installation task channel (docs/URTUU.md).
+      #
+      # Read by this product rather than by the platform since 2026-08-27: the
+      # channel left the core with the app, so these four are the app's
+      # configuration and nothing in the core looks at them any more.
+      #
+      # Without a key the channel is OFF and the deployment starts normally: no
       # link can be made and /.well-known/urtuu.json answers that this
       # installation does not run Өртөө.
       #
@@ -116,6 +147,19 @@ services:
       # invalidates every existing link's token and leaves the far side holding
       # the wrong public key.
       URTUU_SIGNING_KEY: ${URTUU_SIGNING_KEY:-}
+      # Whether an http:// peer may be linked to. Off by default: a link's token
+      # travels in an Authorization header, so a link made over http hands it to
+      # everybody on the path. Only installations inside a closed government
+      # network turn this on deliberately.
+      URTUU_ALLOW_INSECURE_PEERS: ${URTUU_ALLOW_INSECURE_PEERS:-false}
+      # Where request codes are imported from — ring.dgov.mn (docs/RING_STANDARD.md).
+      # All three empty means no import at all and locally authored codes still
+      # work. Without RING_PUBLIC_KEY there is no import either: an unverified
+      # register is a document that can change what every code in the country
+      # means.
+      RING_BASE_URL: ${RING_BASE_URL:-}
+      RING_API_KEY: ${RING_API_KEY:-}
+      RING_PUBLIC_KEY: ${RING_PUBLIC_KEY:-}
 
       # No demo data in production. The seeded account has a published password.
       SEED_DEMO_DATA: "false"

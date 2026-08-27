@@ -68,7 +68,7 @@ func (d *fakePeople) People(_ context.Context, tenantIDs []string) ([]nexus.Dire
 	}
 	found := make([]nexus.DirectoryPerson, 0, len(d.people))
 	for _, person := range d.people {
-		if wanted[person.TenantID] {
+		if wanted[person.WorkspaceID] {
 			found = append(found, person)
 		}
 	}

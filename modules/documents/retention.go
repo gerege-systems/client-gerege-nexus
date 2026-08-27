@@ -188,7 +188,7 @@ func (m *DocumentsModule) SaveRetentionRule(ctx context.Context, tenantID, docTy
 }
 
 func (m *DocumentsModule) listRetentionRulesHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -202,7 +202,7 @@ func (m *DocumentsModule) listRetentionRulesHandler(w http.ResponseWriter, r *ht
 }
 
 func (m *DocumentsModule) saveRetentionRuleHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

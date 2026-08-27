@@ -7,7 +7,7 @@ import (
 	"time"
 
 	domain "github.com/gerege-systems/client-gerege-nexus/domain/urtuu"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 )
 
 // The board's judgements, run without two installations, a signing key or a
