@@ -172,7 +172,7 @@ var (
 // --- HTTP -------------------------------------------------------------------
 
 func (m *DocumentsModule) attachFileHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -203,7 +203,7 @@ func (m *DocumentsModule) attachFileHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *DocumentsModule) downloadFileHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

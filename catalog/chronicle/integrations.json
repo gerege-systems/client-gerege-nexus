@@ -1,0 +1,37 @@
+{
+  "app_id": "io.gerege.nexus.integrations",
+  "entries": [
+    {
+      "version": "1.1.0",
+      "released_at": "2026-08-27",
+      "kind": "feature",
+      "summary": {
+        "mn": "Холбогчийн рельс цөмөөс гарч, апп нь бүтнээрээ энэ бүтээгдэхүүн дотор орлоо.",
+        "en": "The connector rail left the core; the app is now wholly inside this product."
+      },
+      "details": {
+        "mn": "1.0.0 дээр дэлгэц нь аппын хаалганы ард орсон ч менежер, провайдерын бүртгэл, OAuth солилцоо, илгээх давталт нь цөмд үлдсэн байв. Шалтгаан нь хоёр: PDF гарын үсгийн рельс баримтаа түүгээр илгээдэг, ба nexus.MeetingBooker нь түүний адаптер. Хоёулаа шалгалтыг давсангүй — MeetingBooker-ыг нэг ч модуль дуудсангүй, экспортын ганц дуудагч нь рельс өөрөө байв. Тиймээс код, гурван хүснэгт, OAuth-ийн буцах хаяг бүгд энд ирэв (цөмийн 00088, аппын 00001). ЗАН ТӨЛӨВ ӨӨРЧЛӨГДӨВ: гарын үсэг зурсан баримт Drive/Dropbox руу автоматаар илгээгдэхээ болив, POST /esign/documents/{id}/export алга болов — экспортын код энд байгаа тул хэрэгтэй өдөр нь нэг дуудлагын зайд байна. Цөмд үлдсэн нь шифр: INTEGRATION_ENCRYPTION_KEY ба AES-GCM нь платформынх хэвээр, апп түүнд nexus.SecretSealer-ээр хүрнэ — нэг суулгацад нэг л шифр байх ёстой. GOOGLE_OAUTH_*, DROPBOX_OAUTH_*, INTEGRATION_ALLOW_PRIVATE_TARGETS нь одоо энэ бүтээгдэхүүний тохиргоо.",
+        "en": "At 1.0.0 the screens went behind the app gate but the manager, the provider registry, the OAuth exchange and the dispatch loop stayed in the core, for two reasons: the PDF signing rail filed documents through it, and nexus.MeetingBooker was its adapter. Neither held — no module ever called MeetingBooker, and the export's only caller was the rail itself. So the code, the three tables and the OAuth callback came here (core 00088, this app's 00001). BEHAVIOUR CHANGED: a signed document is no longer filed automatically to a connected Drive or Dropbox, and POST /esign/documents/{id}/export is gone; the export code is here, one call away for whatever wants it. What stayed in the core is the cipher — INTEGRATION_ENCRYPTION_KEY and the AES-GCM around it, reached through nexus.SecretSealer — because a deployment must have exactly one. GOOGLE_OAUTH_*, DROPBOX_OAUTH_* and INTEGRATION_ALLOW_PRIVATE_TARGETS are this product's settings now."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "released_at": "2026-08-23",
+      "kind": "feature",
+      "summary": {
+        "mn": "Холбогчийн удирдлага платформын хэсэг байхаа болиод суулгаж, устгаж болдог апп болов.",
+        "en": "Connector administration stopped being part of the platform and became an app that can be installed and removed."
+      },
+      "details": {
+        "mn": "Zoom, Teams, Google, Dropbox холболт бүртгэх дэлгэц, OAuth-ийн урсгал, илгээлтийн бүртгэл — эдгээр нь server.go-гийн ес маршрут байсан тул хурлын өрөө захиалдаггүй, гадагш юу ч файлддаггүй суулгац хүртэл тэднийг үүрдэг байв. Одоо аппын хаалганы ард, integrations.manage эрхтэй (зөвхөн админд анхдагчаар). Рельс нь цөмд үлдэв: менежер, провайдерын бүртгэл, OAuth солилцоо, нууцлалын түлхүүр, илгээх давталт — учир нь PDF гарын үсгийн рельс баримтаа түүгээр илгээдэг, nexus.MeetingBooker нь түүний адаптер. OAuth-ийн буцах хаяг нь хаалганаас гадуур үлдсэн: провайдер хэрэглэгчийн хөтчийг манай session-гүйгээр буцаадаг.",
+        "en": "The screens that register a Zoom, Teams, Google or Dropbox connection, the OAuth flow and the delivery log were nine routes in server.go, so a deployment that books no meetings and files nothing outside itself carried them anyway. They are behind the app gate now, under integrations.manage, which no default role but the administrator receives. The rail stayed in the core — the manager, the provider registry, the OAuth exchange, the credential key and the dispatch loop — because the PDF signing rails file documents through it and nexus.MeetingBooker is its adapter. The OAuth callback stays outside the gate: the provider returns the browser with no session of ours."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    }
+  ]
+}

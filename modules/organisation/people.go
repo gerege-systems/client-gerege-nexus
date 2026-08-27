@@ -62,7 +62,7 @@ func (r repository) ListPeople(ctx context.Context, tenantIDs []string) ([]domai
 			DepartmentID: detail.DepartmentID, DepartmentName: detail.DepartmentName,
 			Active: member.Active, IsAdmin: member.IsAdmin,
 			Roles: member.Roles, JoinedAt: member.JoinedAt,
-			TenantID: member.TenantID, TenantName: member.TenantName,
+			TenantID: member.WorkspaceID, TenantName: member.WorkspaceName,
 		})
 	}
 	return people, nil
@@ -92,7 +92,7 @@ func (r repository) ListDepartments(ctx context.Context, tenantIDs []string) ([]
 	organisations := map[string]string{}
 	for _, member := range members {
 		names[member.MembershipID] = member.Name
-		organisations[member.TenantID] = member.TenantName
+		organisations[member.WorkspaceID] = member.WorkspaceName
 	}
 	for i := range departments {
 		departments[i].ManagerName = names[departments[i].ManagerID]

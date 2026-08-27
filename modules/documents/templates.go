@@ -239,7 +239,7 @@ func (m *DocumentsModule) CreateDocumentFromTemplate(ctx context.Context, tenant
 }
 
 func (m *DocumentsModule) listTemplatesHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -253,7 +253,7 @@ func (m *DocumentsModule) listTemplatesHandler(w http.ResponseWriter, r *http.Re
 }
 
 func (m *DocumentsModule) createTemplateHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -281,7 +281,7 @@ func (m *DocumentsModule) createTemplateHandler(w http.ResponseWriter, r *http.R
 }
 
 func (m *DocumentsModule) updateTemplateHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -314,7 +314,7 @@ func (m *DocumentsModule) updateTemplateHandler(w http.ResponseWriter, r *http.R
 }
 
 func (m *DocumentsModule) deleteTemplateHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -331,7 +331,7 @@ func (m *DocumentsModule) deleteTemplateHandler(w http.ResponseWriter, r *http.R
 }
 
 func (m *DocumentsModule) useTemplateHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

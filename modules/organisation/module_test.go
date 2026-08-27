@@ -95,7 +95,7 @@ func newFixture(t *testing.T) *fixture {
 	people.add(nexus.DirectoryPerson{
 		MembershipID: f.membershipID, UserID: f.userID, Name: "Org Admin",
 		Email: "org-admin@example.invalid", Active: true, IsAdmin: true,
-		Roles: []string{"admin"}, TenantID: f.tenantID, TenantName: "Org",
+		Roles: []string{"admin"}, WorkspaceID: f.tenantID, WorkspaceName: "Org",
 	})
 	f.people = people
 	nexus.Provide[nexus.Directory](people)
@@ -104,8 +104,8 @@ func newFixture(t *testing.T) *fixture {
 	router := chi.NewRouter()
 	module.RegisterRoutes(router, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := nexus.WithTenantID(r.Context(), f.tenantID)
-			ctx = nexus.WithUser(ctx, nexus.UserClaims{UserID: f.userID, TenantID: f.tenantID, IsAdmin: true})
+			ctx := nexus.WithWorkspaceID(r.Context(), f.tenantID)
+			ctx = nexus.WithUser(ctx, nexus.UserClaims{UserID: f.userID, WorkspaceID: f.tenantID, IsAdmin: true})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})

@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 )
 
 // What the board refuses, in the words it has always used.

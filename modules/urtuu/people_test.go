@@ -50,8 +50,8 @@ func TestWorkGoesOnlyToAMemberOfThisOrganisation(t *testing.T) {
 	// test here is what the app does with the answer — refuse work to somebody
 	// who is not a member of the organisation giving it.
 	people := &fakePeople{}
-	people.add(nexus.DirectoryPerson{TenantID: here, UserID: hereUser, Active: true})
-	people.add(nexus.DirectoryPerson{TenantID: there, UserID: thereUser, Active: true})
+	people.add(nexus.DirectoryPerson{WorkspaceID: here, UserID: hereUser, Active: true})
+	people.add(nexus.DirectoryPerson{WorkspaceID: there, UserID: thereUser, Active: true})
 	nexus.Provide[nexus.Directory](people)
 	t.Cleanup(func() { nexus.Provide[nexus.Directory](nil) })
 
@@ -92,7 +92,7 @@ func TestWorkDoesNotGoToSomebodyWhoHasLeft(t *testing.T) {
 	tenantID, userID := organisationWithOneMember(t, pool, "left")
 
 	people := &fakePeople{}
-	person := nexus.DirectoryPerson{TenantID: tenantID, UserID: userID, Active: true}
+	person := nexus.DirectoryPerson{WorkspaceID: tenantID, UserID: userID, Active: true}
 	people.add(person)
 	nexus.Provide[nexus.Directory](people)
 	t.Cleanup(func() { nexus.Provide[nexus.Directory](nil) })

@@ -65,6 +65,11 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
       DOCUMENTS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
+      # The Өртөө channel's integration tests, which stand two installations up
+      # in one process against this schema. They were the core's until the
+      # channel moved here with the app; the variable moved with them, and
+      # without it they self-skip — which the guard step below turns red.
+      URTUU_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/client_test?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

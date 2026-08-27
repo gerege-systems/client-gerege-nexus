@@ -117,11 +117,11 @@ type GrantRequest struct {
 // and not yet a permission, because accepted_at is null until the owning
 // organisation answers.
 type Grant struct {
-	ID              string
-	GrantorTenantID string
-	GranteeTenantID string
-	ReportKey       string
-	Scope           string
+	ID                 string
+	GrantorWorkspaceID string
+	GranteeWorkspaceID string
+	ReportKey          string
+	Scope              string
 	// CounterpartyRef is decided once, here, and stored. Matching it again on
 	// every run would mean a grant silently pointing at different data after
 	// the requesting organisation edited its own profile.

@@ -3,31 +3,40 @@
  * Copyright (c) 2026 Gerege Systems Development Team, Gerege Nomadica Foundation
  * Distributed under the Apache 2.0 License.
  *
- * Package urtuu is the Өртөө app: the task board on top of the Өртөө channel.
+ * Package urtuu is the Өртөө app: the task board, and the channel under it.
  *
- * The split with internal/platform/urtuu is the one the proposal draws (§3).
- * The channel is infrastructure — links, signatures, queues, retries — and
- * belongs to the platform, because any module may one day need to hand work to
- * another installation and because a link an administrator established must
- * keep carrying what is in flight over it whatever apps come and go. What is
- * here is the product: a task, its life, its tree, and the screens for them.
+ * The split the proposal drew (§3) put the channel in the platform —
+ * infrastructure, on the argument that any module may one day need to hand work
+ * to another installation, and that a link an administrator established must
+ * keep carrying what is in flight over it whatever apps come and go. Three
+ * months later the ring still had one caller, this one, so what the platform
+ * was carrying for everybody was one app's transport. The channel came here on
+ * 2026-08-27 (modules/urtuu/channel) and the core kept nothing of Өртөө: no
+ * tables, no routes, no contract, no environment variables.
  *
- * A tenant installs this the way it installs anything else. An installation
- * that has not is still on the channel: envelopes arrive, are verified, stored
- * and acknowledged, and sit unread in the inbox until the day this module is
- * compiled in and registers its readers — at which point the backlog is
- * processed rather than lost.
+ * The split itself survives the move, one directory down: this package holds
+ * the product — a task, its life, its tree, the screens — and reaches the
+ * channel only through the two interfaces in domain/urtuu/wire. That is what
+ * lets the lifecycle tests run two installations as two structs in one
+ * process, and it is what keeps a board query from growing a join into the
+ * outbox.
+ *
+ * A tenant installs this the way it installs anything else. What is different
+ * from every other app is that uninstalling it now stops the exchange as well
+ * as hiding the board: the envelopes in flight stay in the queue, and nothing
+ * carries them until it is installed again.
  */
 
 package urtuu
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"net/http"
 
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -62,13 +71,13 @@ const ID = "io.gerege.nexus.urtuu"
 type Module struct {
 	db    nexus.DB
 	perms nexus.PermissionStore
-	link  nexus.Link
+	link  contract.Link
 	// peers is the reading half of the same channel: who is on the other end of
 	// a link, what a code means, what went over it. Handed in rather than
 	// fetched from the registry for the reason link is — a dependency a
 	// constructor names is one the compiler checks, and one fetched inside a
 	// method is a nil five minutes after a clean boot.
-	peers nexus.PeerDirectory
+	peers contract.PeerDirectory
 }
 
 // New builds the module and registers what it reads.
@@ -83,8 +92,8 @@ type Module struct {
 // The interface rather than the platform's own *transport.Service: this app is
 // meant to be able to leave for a distribution of its own, and a distribution
 // cannot import internal/. Five methods is all it ever used, which is what made
-// the capability worth publishing — see nexus.Link.
-func New(p nexus.Platform, link nexus.Link, peers nexus.PeerDirectory) *Module {
+// the capability worth publishing — see contract.Link.
+func New(p nexus.Platform, link contract.Link, peers contract.PeerDirectory) *Module {
 	m := &Module{db: p.DB(), perms: p.Permissions(), link: link, peers: peers}
 	nexus.Register(m)
 	nexus.Migrations(m.ID(), schema())
@@ -97,11 +106,11 @@ func New(p nexus.Platform, link nexus.Link, peers nexus.PeerDirectory) *Module {
 func (m *Module) ID() string   { return ID }
 func (m *Module) Name() string { return "Urtuu Relay" }
 
-func (m *Module) Version() string { return "1.0.0" }
+func (m *Module) Version() string { return "1.1.0" }
 
 // Dependencies are none. A task board needs the channel, and the channel is
-// the platform's rather than an app's — so there is nothing here that could be
-// uninstalled out from under it.
+// inside this app — so there is nothing here that could be uninstalled out from
+// under it.
 func (m *Module) Dependencies() []nexus.Dependency { return nil }
 
 // Permissions are three, and the third is the interesting one.
@@ -178,6 +187,16 @@ func (m *Module) MenuPermission() string { return "urtuu.read" }
 func (m *Module) RoutePermissionPrefix() string { return "" }
 
 func (m *Module) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Handler) http.Handler) {
+	// The channel's own routes, when what we were handed is a channel: the
+	// four another installation reaches and the two an administrator here
+	// does. An optional interface because the board's tests hand over a fake
+	// that has no sockets and no screens, and there is nothing for it to mount.
+	if mounts, ok := m.link.(interface {
+		Routes(chi.Router, func(http.Handler) http.Handler)
+	}); ok {
+		mounts.Routes(r, tenantAuthMiddleware)
+	}
+
 	r.Route("/api/v1/urtuu/tasks", func(tr chi.Router) {
 		tr.Use(tenantAuthMiddleware)
 		read := nexus.RequirePermission(m.perms, "urtuu.read")
@@ -202,4 +221,20 @@ func (m *Module) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Han
 		tr.With(process).Post("/{id}/assign", m.handleAssign)
 		tr.With(process).Post("/{id}/complete", m.handleComplete)
 	})
+}
+
+// StartHousekeeping runs the channel's exchange loop and its retention sweep.
+//
+// The platform calls this on every registered module that has it — see the
+// optional interface in the workspace service's StartBackgroundJobs. It is the
+// whole reason that hook exists: without the loop a child installation never
+// asks its parent for anything, and what breaks is a queue that quietly stays
+// full rather than a route that answers 500.
+//
+// Nothing starts where the channel is switched off, and nothing at all starts
+// under a fake: both are the same optional interface as the routes above.
+func (m *Module) StartHousekeeping(ctx context.Context) {
+	if background, ok := m.link.(interface{ StartHousekeeping(context.Context) }); ok {
+		background.StartHousekeeping(ctx)
+	}
 }

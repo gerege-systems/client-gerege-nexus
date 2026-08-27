@@ -51,10 +51,10 @@ func routerFor(t *testing.T, held string) http.Handler {
 				UserID: "11111111-1111-1111-1111-111111111111",
 				// Not an administrator: RequirePermission waves those through,
 				// which would make every case below pass for the wrong reason.
-				TenantID: "22222222-2222-2222-2222-222222222222",
-				Email:    "member@example.mn",
+				WorkspaceID: "22222222-2222-2222-2222-222222222222",
+				Email:       "member@example.mn",
 			})
-			ctx = nexus.WithTenantID(ctx, "22222222-2222-2222-2222-222222222222")
+			ctx = nexus.WithWorkspaceID(ctx, "22222222-2222-2222-2222-222222222222")
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})

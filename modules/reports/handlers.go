@@ -33,7 +33,7 @@ const maxRunBody = 16 << 10
 
 // handleList returns the reports this tenant may run, grouped by app.
 func (m *Module) handleList(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -139,7 +139,7 @@ func (m *Module) handleExport(w http.ResponseWriter, r *http.Request) {
 // report was written for. Running it is a call to the engine with that key, so
 // there is nothing here to hold the engine's own type for.
 func (m *Module) resolve(w http.ResponseWriter, r *http.Request) (string, domain.Report, bool) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return "", domain.Report{}, false
 	}

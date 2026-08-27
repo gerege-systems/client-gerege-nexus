@@ -26,8 +26,8 @@ import (
 	"errors"
 	"strings"
 
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
 )
 
 // documentRequest is how a caller attaches paperwork to a task.
@@ -185,6 +185,6 @@ func (m *Module) saveEvidence(ctx context.Context, tenantID, taskID string, list
 	if err != nil {
 		return
 	}
-	_, _ = m.db.Exec(nexus.WithTenantID(ctx, tenantID),
+	_, _ = m.db.Exec(nexus.WithWorkspaceID(ctx, tenantID),
 		`UPDATE urtuu_tasks SET evidence = $2, updated_at = NOW() WHERE id = $1`, taskID, encoded)
 }

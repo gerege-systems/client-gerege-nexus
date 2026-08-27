@@ -249,7 +249,7 @@ func (m *DocumentsModule) pendingCanRequireNamedSigners(ctx context.Context, q q
 }
 
 func (m *DocumentsModule) listSignaturePoliciesHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -263,7 +263,7 @@ func (m *DocumentsModule) listSignaturePoliciesHandler(w http.ResponseWriter, r 
 }
 
 func (m *DocumentsModule) saveSignaturePolicyHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -298,7 +298,7 @@ func (m *DocumentsModule) saveSignaturePolicyHandler(w http.ResponseWriter, r *h
 // offered both channels always, which on ДАН meant a button whose only outcome
 // was a 503 — there is no live client for it on any deployment today.
 func (m *DocumentsModule) signingRailsHandler(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := nexus.RequireTenant(w, r)
+	tenantID, ok := nexus.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

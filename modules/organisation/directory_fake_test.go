@@ -42,7 +42,7 @@ func (d *fakeDirectory) People(_ context.Context, tenantIDs []string) ([]nexus.D
 	}
 	found := make([]nexus.DirectoryPerson, 0, len(d.people))
 	for _, person := range d.people {
-		if wanted[person.TenantID] {
+		if wanted[person.WorkspaceID] {
 			found = append(found, person)
 		}
 	}
@@ -55,7 +55,7 @@ func (d *fakeDirectory) Membership(_ context.Context, tenantID, membershipID str
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, person := range d.people {
-		if person.TenantID == tenantID && person.MembershipID == membershipID {
+		if person.WorkspaceID == tenantID && person.MembershipID == membershipID {
 			return nexus.DirectoryMembership{UserID: person.UserID, IsAdmin: person.IsAdmin}, nil
 		}
 	}
@@ -67,7 +67,7 @@ func (d *fakeDirectory) CountAdmins(_ context.Context, tenantID, exceptMembershi
 	defer d.mu.Unlock()
 	count := 0
 	for _, person := range d.people {
-		if person.TenantID == tenantID && person.Active && person.IsAdmin && person.MembershipID != exceptMembershipID {
+		if person.WorkspaceID == tenantID && person.Active && person.IsAdmin && person.MembershipID != exceptMembershipID {
 			count++
 		}
 	}
@@ -78,7 +78,7 @@ func (d *fakeDirectory) SetActive(_ context.Context, tenantID, membershipID stri
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for i := range d.people {
-		if d.people[i].TenantID == tenantID && d.people[i].MembershipID == membershipID {
+		if d.people[i].WorkspaceID == tenantID && d.people[i].MembershipID == membershipID {
 			d.people[i].Active = active
 			return true, nil
 		}

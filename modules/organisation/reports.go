@@ -90,7 +90,7 @@ func (userActivity) Run(ctx context.Context, q nexus.Querier, p nexus.Params) (n
 		 LIMIT 500`
 
 	rows, err := q.Query(ctx, query,
-		nexus.TenantOf(ctx), p.Time("period_from"), p.Time("period_to"))
+		nexus.WorkspaceOf(ctx), p.Time("period_from"), p.Time("period_to"))
 	if err != nil {
 		return nexus.Result{}, err
 	}
@@ -188,7 +188,7 @@ func (headcountByUnit) Run(ctx context.Context, q nexus.Querier, p nexus.Params)
 		unassigned = "No unit"
 	}
 
-	rows, err := q.Query(ctx, query, nexus.TenantOf(ctx), unassigned)
+	rows, err := q.Query(ctx, query, nexus.WorkspaceOf(ctx), unassigned)
 	if err != nil {
 		return nexus.Result{}, err
 	}

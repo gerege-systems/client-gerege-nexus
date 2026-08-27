@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 )
 
 // The platform's channel, in memory.
@@ -27,7 +27,7 @@ import (
 // That package is under internal/ and could not come here, and it should not
 // have: what it holds is the platform's to test. What is this app's is what it
 // does with work that arrives and what it puts on the wire, and both are
-// visible through the five methods of nexus.Link.
+// visible through the five methods of contract.Link.
 //
 // So the two installations are two modules in one process, and an envelope is a
 // slice entry. Everything that made the real channel a channel — signatures,
@@ -49,31 +49,31 @@ type fakeChannel struct {
 	// foreign key into it — the channel's table is still the channel's.
 	peerID string
 
-	readers map[string]nexus.LinkReader
-	inbox   []nexus.LinkMessage
+	readers map[string]contract.LinkReader
+	inbox   []contract.LinkMessage
 	// read is everything that has been handed to a reader. The real channel
 	// keeps its inbox rows after acknowledging them, and more than one test
 	// here asks what came back rather than what the board then showed.
-	read []nexus.LinkMessage
+	read []contract.LinkMessage
 	// spokeAt is when this link last carried something, which is what the board
 	// shows as "the link is alive".
 	spokeAt *time.Time
 
 	other *fakeChannel
 	// codes are the request codes opened on this link, as CodeOpenOn sees them.
-	codes map[string]nexus.RequestCode
+	codes map[string]contract.RequestCode
 	// local are codes this installation knows and has not announced anywhere.
-	local map[string]nexus.RequestCode
+	local map[string]contract.RequestCode
 }
 
 func (c *fakeChannel) Enabled() bool          { return true }
 func (c *fakeChannel) InstallationID() string { return c.installationID }
 
-func (c *fakeChannel) Deliver(kind string, reader nexus.LinkReader) {
+func (c *fakeChannel) Deliver(kind string, reader contract.LinkReader) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.readers == nil {
-		c.readers = map[string]nexus.LinkReader{}
+		c.readers = map[string]contract.LinkReader{}
 	}
 	c.readers[kind] = reader
 }
@@ -89,14 +89,14 @@ func (c *fakeChannel) Enqueue(_ context.Context, tenantID, kind string, payload 
 	if err != nil {
 		return "", err
 	}
-	message := nexus.LinkMessage{
-		TenantID:  c.other.tenantID,
-		PeerID:    c.other.peerID,
-		PeerName:  c.name,
-		MessageID: uuid.NewString(),
-		Kind:      kind,
-		CreatedAt: time.Now(),
-		Payload:   body,
+	message := contract.LinkMessage{
+		WorkspaceID: c.other.tenantID,
+		PeerID:      c.other.peerID,
+		PeerName:    c.name,
+		MessageID:   uuid.NewString(),
+		Kind:        kind,
+		CreatedAt:   time.Now(),
+		Payload:     body,
 	}
 	_ = tenantID
 	c.other.mu.Lock()
@@ -115,13 +115,13 @@ func (c *fakeChannel) EnqueueTx(ctx context.Context, _ pgx.Tx, tenantID, kind st
 	return c.Enqueue(ctx, tenantID, kind, payload, peerIDs...)
 }
 
-// Peers, RequestCode, CodeOpenOn and DeliveryLoad are nexus.PeerDirectory: the
+// Peers, RequestCode, CodeOpenOn and DeliveryLoad are contract.PeerDirectory: the
 // reading half of the channel. The app asks for names and codes through it
 // rather than joining the channel's tables — see peers.go and ADR 0004.
-func (c *fakeChannel) Peers(context.Context, string) ([]nexus.Peer, error) {
+func (c *fakeChannel) Peers(context.Context, string) ([]contract.Peer, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return []nexus.Peer{{
+	return []contract.Peer{{
 		ID: c.peerID, Name: c.other.name, Role: "child", Status: "active",
 		LastSeenAt: c.spokeAt, Undelivered: len(c.other.inbox),
 	}}, nil
@@ -135,15 +135,15 @@ func (c *fakeChannel) defineLocally(code, line string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.local == nil {
-		c.local = map[string]nexus.RequestCode{}
+		c.local = map[string]contract.RequestCode{}
 	}
-	c.local[code] = nexus.RequestCode{
+	c.local[code] = contract.RequestCode{
 		Code: code, Names: map[string]string{"mn": "Зөвхөн дотоод"},
 		Line: line, Active: true, Source: "local",
 	}
 }
 
-func (c *fakeChannel) RequestCode(_ context.Context, _, code string) (nexus.RequestCode, bool, error) {
+func (c *fakeChannel) RequestCode(_ context.Context, _, code string) (contract.RequestCode, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if found, ok := c.codes[code]; ok {
@@ -160,10 +160,10 @@ func (c *fakeChannel) CodeOpenOn(_ context.Context, _, _, code string) (bool, er
 	return open, nil
 }
 
-func (c *fakeChannel) DeliveryLoad(context.Context, string, time.Time, time.Time) ([]nexus.PeerLoad, error) {
+func (c *fakeChannel) DeliveryLoad(context.Context, string, time.Time, time.Time) ([]contract.PeerLoad, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return []nexus.PeerLoad{{
+	return []contract.PeerLoad{{
 		PeerID: c.peerID, Envelopes: int64(len(c.other.inbox)), Delivered: 0,
 		Pending: int64(len(c.other.inbox)),
 	}}, nil
@@ -176,15 +176,15 @@ func (c *fakeChannel) openCode(code, line string, sla int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.codes == nil {
-		c.codes = map[string]nexus.RequestCode{}
+		c.codes = map[string]contract.RequestCode{}
 	}
-	c.codes[code] = nexus.RequestCode{
-		Code:   code,
-		Names:  map[string]string{"mn": "Тооллого", "en": "Count"},
-		SLA:    &sla,
-		Line:   line,
-		Active: true,
-		Source: "local",
+	c.codes[code] = contract.RequestCode{
+		Code:       code,
+		Names:      map[string]string{"mn": "Тооллого", "en": "Count"},
+		DefaultSLA: time.Duration(sla) * time.Second,
+		Line:       line,
+		Active:     true,
+		Source:     "local",
 	}
 }
 
@@ -197,7 +197,7 @@ func (c *fakeChannel) drain() {
 	c.mu.Lock()
 	waiting := c.inbox
 	c.inbox = nil
-	readers := make(map[string]nexus.LinkReader, len(c.readers))
+	readers := make(map[string]contract.LinkReader, len(c.readers))
 	for kind, reader := range c.readers {
 		readers[kind] = reader
 	}
@@ -230,11 +230,11 @@ func (c *fakeChannel) drain() {
 // Read included, because that is what the real inbox does: a row is marked
 // processed, not deleted, and the tests that ask what came back run after the
 // envelope has been carried.
-func (c *fakeChannel) received(kind string) []nexus.LinkMessage {
+func (c *fakeChannel) received(kind string) []contract.LinkMessage {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var found []nexus.LinkMessage
-	for _, message := range append(append([]nexus.LinkMessage{}, c.read...), c.inbox...) {
+	var found []contract.LinkMessage
+	for _, message := range append(append([]contract.LinkMessage{}, c.read...), c.inbox...) {
 		if message.Kind == kind {
 			found = append(found, message)
 		}
@@ -248,7 +248,7 @@ func (c *fakeChannel) received(kind string) []nexus.LinkMessage {
 // channel checks it, and nothing here ever calls it.
 //
 // The app never reads this table — that is the whole point of
-// nexus.PeerDirectory — but a task's origin_peer_id and target_peer_id are
+// contract.PeerDirectory — but a task's origin_peer_id and target_peer_id are
 // foreign keys into it, and a foreign key is not something a fake can stand in
 // for. So the row exists and everything about it that a screen would show comes
 // from the fake instead.

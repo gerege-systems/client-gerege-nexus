@@ -122,11 +122,11 @@ func newFixture(t *testing.T) *fixture {
 	router := chi.NewRouter()
 	module.RegisterRoutes(router, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := nexus.WithTenantID(r.Context(), "11111111-1111-1111-1111-111111111111")
+			ctx := nexus.WithWorkspaceID(r.Context(), "11111111-1111-1111-1111-111111111111")
 			ctx = nexus.WithUser(ctx, nexus.UserClaims{
-				UserID:   "22222222-2222-2222-2222-222222222222",
-				TenantID: "11111111-1111-1111-1111-111111111111",
-				IsAdmin:  true,
+				UserID:      "22222222-2222-2222-2222-222222222222",
+				WorkspaceID: "11111111-1111-1111-1111-111111111111",
+				IsAdmin:     true,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

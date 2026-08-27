@@ -61,14 +61,14 @@ func (r records) RegistrationOf(ctx context.Context, tenantID string) (string, e
 
 func (r records) CreateGrant(ctx context.Context, grant domain.Grant) (string, error) {
 	id, err := r.grants.Request(ctx, nexus.ReportGrant{
-		ReportKey:       grant.ReportKey,
-		GrantorTenantID: grant.GrantorTenantID,
-		GranteeTenantID: grant.GranteeTenantID,
-		Scope:           grant.Scope,
-		CounterpartyRef: grant.CounterpartyRef,
-		ValidUntil:      grant.ValidUntil,
-		Note:            grant.Note,
-		CreatedBy:       grant.CreatedBy,
+		ReportKey:          grant.ReportKey,
+		GrantorWorkspaceID: grant.GrantorWorkspaceID,
+		GranteeWorkspaceID: grant.GranteeWorkspaceID,
+		Scope:              grant.Scope,
+		CounterpartyRef:    grant.CounterpartyRef,
+		ValidUntil:         grant.ValidUntil,
+		Note:               grant.Note,
+		CreatedBy:          grant.CreatedBy,
 	})
 	if errors.Is(err, nexus.ErrReportGrantExists) {
 		return "", domain.ErrGrantExists

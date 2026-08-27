@@ -14,9 +14,11 @@
 // decision, and a distribution that compiled it in could not be pointed at a
 // second provider.
 //
-// It carries three apps, all of which moved here from the platform on
-// 2026-08-23: the e-Government link, the organisation and its people, and
-// documents with the signature ceremonies. The repository was Level 2 from the
+// It carries six apps, and every one of them moved here from the platform: the
+// e-Government link, the organisation and its people, documents with the
+// signature ceremonies, the reports, Өртөө — the task board and, since
+// 2026-08-27, the channel under it — and the connectors to systems outside the
+// platform. The repository was Level 2 from the
 // first commit precisely so that this would be a change to one file rather
 // than a migration of the deployment, and it was.
 //
@@ -36,11 +38,13 @@ import (
 
 	"github.com/gerege-systems/client-gerege-nexus/modules/documents"
 	"github.com/gerege-systems/client-gerege-nexus/modules/egov"
+	"github.com/gerege-systems/client-gerege-nexus/modules/integrations"
 	"github.com/gerege-systems/client-gerege-nexus/modules/organisation"
 	"github.com/gerege-systems/client-gerege-nexus/modules/reports"
 	"github.com/gerege-systems/client-gerege-nexus/modules/urtuu"
+	"github.com/gerege-systems/client-gerege-nexus/modules/urtuu/channel"
+	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/host"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/platform"
 )
 
 // signingRail is the platform's PDF signing surface, or the zero value.
@@ -56,31 +60,6 @@ func signingRail() nexus.Signer {
 		slog.Warn("this deployment publishes no signing rail; documents will be approved rather than signed", "error", err)
 	}
 	return signer
-}
-
-// channel is the platform's link to other installations, or nothing.
-//
-// A deployment with no signing key is not half-joined to the ring, it is not
-// joined — and the app is still built, because what it registers is what makes
-// a backlog readable the day a key arrives.
-func channel() nexus.Link {
-	link, err := nexus.Capability[nexus.Link]()
-	if err != nil {
-		slog.Warn("this deployment provides no installation channel; Өртөө will carry nothing", "error", err)
-	}
-	return link
-}
-
-// theOtherEnd is the reading half of the same channel: who is on a link, what a
-// request code means, what has gone over it. Published by the platform since
-// backend/v1.11.0; before it the app read the channel's tables itself, which is
-// what kept it in the core (ADR 0004).
-func theOtherEnd() nexus.PeerDirectory {
-	peers, err := nexus.Capability[nexus.PeerDirectory]()
-	if err != nil {
-		slog.Warn("this deployment provides no peer directory; Өртөө will name links by id", "error", err)
-	}
-	return peers
 }
 
 // The four platform surfaces the reports app is built on. Each is asked for
@@ -126,7 +105,7 @@ func main() {
 	// cannot start — a catalogue that disagrees with its modules, a database it
 	// cannot reach — must not exit 0 and read as a clean shutdown to whatever
 	// is supervising it.
-	err := platform.Run(platform.Options{
+	err := host.Run(host.Options{
 		// Every module this distribution carries, constructed here and nowhere
 		// else. A module registers itself; what this callback decides is which
 		// ones exist in this binary at all.
@@ -141,19 +120,34 @@ func main() {
 			// the routes for it.
 			documents.New(p, signingRail())
 			egov.New(p)
-			// Өртөө: the task board over the platform's channel to other
-			// installations. Two capabilities rather than one, and they are
-			// different halves: Link is how work is sent, PeerDirectory is how
-			// the other end is read. Both are the platform's — a link an
-			// administrator established keeps carrying what is in flight over
-			// it whatever apps come and go — so this app asks for them instead
-			// of owning them.
+			// The connectors: webhook subscribers, and the Drive, Dropbox and
+			// Meet accounts an organisation links. They were nine routes in the
+			// platform's own server until 2026-08-27 — see the package comment
+			// for the two arguments that kept them there and why neither held.
 			//
-			// Constructed whether or not this deployment has a signing key: the
-			// module registers the readers for arriving envelopes, and an
-			// installation given a key later must not need a second restart
-			// before its backlog is read.
-			urtuu.New(p, channel(), theOtherEnd())
+			// Nothing is handed in. The one thing this app cannot own is the
+			// cipher that seals a stored credential, and it asks the platform
+			// for that per call (nexus.SecretSealer) rather than holding it:
+			// modules are built before main() has finished publishing.
+			integrations.New(p)
+			// Өртөө: the task board and, since 2026-08-27, the channel
+			// underneath it. Both halves are this product's now — the platform
+			// published nexus.Link and nexus.PeerDirectory for three months and
+			// this app was the only caller either ever had, which is what made
+			// them one app's transport rather than a platform rail.
+			//
+			// Two values rather than one, and they are still different halves:
+			// the channel is how work is sent, the directory is how the other
+			// end is read. The interfaces stayed (domain/urtuu/wire) because
+			// the board's tests replace both with two structs in one process.
+			//
+			// Built whether or not this deployment has a signing key. Without
+			// one the channel answers Enabled() false and carries nothing; the
+			// module still registers its readers, so an installation given a
+			// key later does not need a second restart before its backlog is
+			// read.
+			ring := channel.New(p.DB(), p.Permissions())
+			urtuu.New(p, ring, channel.AsPeerDirectory(ring))
 			// Reports last, and after every module that registers one: the app
 			// serves the registry, and a module constructed after it would have
 			// its reports missing from the first listing.

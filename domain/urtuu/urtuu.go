@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 )
 
 // RequestCode is what the board needs to know about a code before raising work

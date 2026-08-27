@@ -23,8 +23,8 @@ import (
 	"time"
 
 	domain "github.com/gerege-systems/client-gerege-nexus/domain/urtuu"
+	contract "github.com/gerege-systems/client-gerege-nexus/domain/urtuu/wire"
 	"github.com/gerege-systems/open-gerege-nexus/backend/pkg/nexus"
-	contract "github.com/gerege-systems/open-gerege-nexus/backend/pkg/urtuu"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -180,7 +180,7 @@ func (m *Module) reportUp(ctx context.Context, tenantID string, task Task, note 
 // refused because a task that cannot be read is a task nobody can do. In both
 // cases the parent is told, with a reason, which is the whole difference
 // between a refusal and a silence.
-func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessage) error {
+func (m *Module) receiveAssignment(ctx context.Context, message contract.LinkMessage) error {
 	var work assignment
 	if err := json.Unmarshal(message.Payload, &work); err != nil {
 		// From a verified sender, so retrying will not make it parse. Marked
@@ -189,10 +189,10 @@ func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessag
 		return nil
 	}
 
-	ctx = nexus.WithTenantID(ctx, message.TenantID)
+	ctx = nexus.WithWorkspaceID(ctx, message.WorkspaceID)
 
 	if refusal := m.refuseAssignment(ctx, message, work); refusal != "" {
-		if _, err := m.link.Enqueue(ctx, message.TenantID, contract.KindTaskUpdate, update{
+		if _, err := m.link.Enqueue(ctx, message.WorkspaceID, contract.KindTaskUpdate, update{
 			TaskID: work.TaskID,
 			Status: string(contract.StatusReturned),
 			Note:   refusal,
@@ -202,7 +202,7 @@ func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessag
 		return nil
 	}
 
-	code, err := m.lookupCode(ctx, message.TenantID, work.Code)
+	code, err := m.lookupCode(ctx, message.WorkspaceID, work.Code)
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessag
 	// Registered on arrival, under this installation's own year and sequence.
 	// The sender's number is kept beside it rather than reused: two registers,
 	// two numbers, and the second cites the first.
-	number, err := nextNumber(ctx, tx, message.TenantID, domain.LineOf(work.Line), time.Now())
+	number, err := nextNumber(ctx, tx, message.WorkspaceID, domain.LineOf(work.Line), time.Now())
 	if err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessag
 		-- write that marks it read can fail after this one succeeded.
 		ON CONFLICT (origin_peer_id, origin_task_id) WHERE origin_peer_id IS NOT NULL DO NOTHING
 		RETURNING id`,
-		message.TenantID, number, work.Number, work.Code, domain.LineOf(work.Line), work.Title,
+		message.WorkspaceID, number, work.Number, work.Code, domain.LineOf(work.Line), work.Title,
 		domain.PayloadOrEmpty(work.Payload), domain.ApplicantOrEmpty(work.Applicant),
 		message.PeerID, work.TaskID, append(work.OriginChain, m.link.InstallationID()),
 		deadline, incomingEvidence).Scan(&taskID)
@@ -255,7 +255,7 @@ func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessag
 	if err != nil {
 		return err
 	}
-	if err := m.record(ctx, tx, message.TenantID, taskID,
+	if err := m.record(ctx, tx, message.WorkspaceID, taskID,
 		string(contract.StatusReceived), "", message.PeerID, ""); err != nil {
 		return err
 	}
@@ -269,8 +269,8 @@ func (m *Module) receiveAssignment(ctx context.Context, message nexus.LinkMessag
 // create the task, and refusing outright would turn a transient fault into a
 // permanent no — so it travels as its own sentence, which the parent can tell
 // apart when it retries.
-func (m *Module) refuseAssignment(ctx context.Context, message nexus.LinkMessage, work assignment) string {
-	code, err := m.lookupCode(ctx, message.TenantID, work.Code)
+func (m *Module) refuseAssignment(ctx context.Context, message contract.LinkMessage, work assignment) string {
+	code, err := m.lookupCode(ctx, message.WorkspaceID, work.Code)
 	found := err == nil
 	failed := err != nil && !errors.Is(err, pgx.ErrNoRows)
 	if failed {
@@ -283,7 +283,7 @@ func (m *Module) refuseAssignment(ctx context.Context, message nexus.LinkMessage
 // ------------------------------------------------------------- receiving back
 
 // receiveUpdate applies a subordinate's news to the mirror this side keeps.
-func (m *Module) receiveUpdate(ctx context.Context, message nexus.LinkMessage) error {
+func (m *Module) receiveUpdate(ctx context.Context, message contract.LinkMessage) error {
 	var news update
 	if err := json.Unmarshal(message.Payload, &news); err != nil {
 		slog.Warn("urtuu: an update could not be read", "peer_id", message.PeerID, "error", err)
@@ -295,7 +295,7 @@ func (m *Module) receiveUpdate(ctx context.Context, message nexus.LinkMessage) e
 		return nil
 	}
 
-	ctx = nexus.WithTenantID(ctx, message.TenantID)
+	ctx = nexus.WithWorkspaceID(ctx, message.WorkspaceID)
 	tx, err := m.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -309,7 +309,7 @@ func (m *Module) receiveUpdate(ctx context.Context, message nexus.LinkMessage) e
 		SELECT status, coalesce(parent_task_id::text, '')
 		  FROM urtuu_tasks
 		 WHERE id = $1 AND tenant_id = $3 AND target_peer_id = $2
-		 FOR UPDATE`, news.TaskID, message.PeerID, message.TenantID).Scan(&from, &parentID)
+		 FOR UPDATE`, news.TaskID, message.PeerID, message.WorkspaceID).Scan(&from, &parentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		slog.Warn("urtuu: an update named a task this link was never given",
 			"peer_id", message.PeerID, "task_id", news.TaskID)
@@ -340,7 +340,7 @@ func (m *Module) receiveUpdate(ctx context.Context, message nexus.LinkMessage) e
 		INSERT INTO urtuu_task_events
 		    (tenant_id, task_id, from_status, to_status, actor_peer_id, note)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
-		message.TenantID, news.TaskID, from, news.Status, message.PeerID, news.Note); err != nil {
+		message.WorkspaceID, news.TaskID, from, news.Status, message.PeerID, news.Note); err != nil {
 		return err
 	}
 	tasksTotal.WithLabelValues(news.Status).Inc()
@@ -349,7 +349,7 @@ func (m *Module) receiveUpdate(ctx context.Context, message nexus.LinkMessage) e
 	}
 
 	if parentID != "" {
-		m.rollUp(ctx, message.TenantID, parentID)
+		m.rollUp(ctx, message.WorkspaceID, parentID)
 	}
 	return nil
 }
@@ -363,7 +363,7 @@ func (m *Module) receiveUpdate(ctx context.Context, message nexus.LinkMessage) e
 // A returned branch does not complete the parent. Somebody has to read the
 // reason and decide, which is the difference between a refusal and a delay.
 func (m *Module) rollUp(ctx context.Context, tenantID, parentID string) {
-	ctx = nexus.WithTenantID(ctx, tenantID)
+	ctx = nexus.WithWorkspaceID(ctx, tenantID)
 
 	var outstanding int
 	if err := m.db.QueryRow(ctx, `
@@ -411,7 +411,7 @@ func (m *Module) rollUp(ctx context.Context, tenantID, parentID string) {
 // answer already written here was written by somebody at this installation,
 // and a roll-up is not the thing that should replace it.
 func (m *Module) gatherAnswers(ctx context.Context, tenantID, parentID string) {
-	ctx = nexus.WithTenantID(ctx, tenantID)
+	ctx = nexus.WithWorkspaceID(ctx, tenantID)
 
 	var line, existing string
 	if err := m.db.QueryRow(ctx,
@@ -449,7 +449,7 @@ func (m *Module) gatherAnswers(ctx context.Context, tenantID, parentID string) {
 	// that has been revoked since keeps its id rather than losing the
 	// attribution — a dash beside one of three answers is worse than an id.
 	if len(branches) > 0 {
-		names := m.peerNames(ctx, nexus.TenantOf(ctx))
+		names := m.peerNames(ctx, nexus.WorkspaceOf(ctx))
 		for i := range branches {
 			if name := names[branches[i].Peer]; name != "" {
 				branches[i].Peer = name

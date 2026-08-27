@@ -133,7 +133,7 @@
     "icon_url": "/icons/urtuu.png",
     "category": "Platform",
     "visibility": "public",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "translations": {
       "mn": {
         "name": "Өртөө",
@@ -206,6 +206,48 @@
         "name": "Informes",
         "description": "Informes de negocio para cada aplicación instalada: ejecución en pantalla, gráficos, exportación a Excel o CSV y envío programado por correo.",
         "category": "Productividad"
+      }
+    }
+  },
+  {
+    "id": "io.gerege.nexus.integrations",
+    "slug": "integrations",
+    "name": "Integrations",
+    "description": "Links to systems outside this platform: webhook subscribers, and the Google Drive, Dropbox and Google Meet accounts an organisation connects.",
+    "icon_url": "/icons/integrations.png",
+    "category": "Platform",
+    "visibility": "public",
+    "version": "1.1.0",
+    "translations": {
+      "mn": {
+        "name": "Гадаад системийн интеграц ба Webhook",
+        "description": "Платформын гаднах системүүдтэй холбох холбогчид: webhook захиалагч, Google Drive, Dropbox, Google Meet бүртгэл.",
+        "category": "Платформ"
+      },
+      "ar": {
+        "name": "التكاملات",
+        "description": "روابط إلى أنظمة خارج هذه المنصة: مشتركو Webhook وحسابات Google Drive وDropbox وGoogle Meet.",
+        "category": "المنصة"
+      },
+      "zh": {
+        "name": "外部系统集成与 Webhook",
+        "description": "连接平台之外的系统：Webhook 订阅方，以及 Google Drive、Dropbox 和 Google Meet 账户。",
+        "category": "平台"
+      },
+      "fr": {
+        "name": "Intégrations",
+        "description": "Liens vers des systèmes extérieurs à la plateforme : abonnés webhook et comptes Google Drive, Dropbox et Google Meet.",
+        "category": "Plateforme"
+      },
+      "ru": {
+        "name": "Интеграции и вебхуки",
+        "description": "Связи с системами вне платформы: подписчики вебхуков и учётные записи Google Drive, Dropbox и Google Meet.",
+        "category": "Платформа"
+      },
+      "es": {
+        "name": "Integraciones",
+        "description": "Enlaces a sistemas fuera de esta plataforma: suscriptores de webhook y cuentas de Google Drive, Dropbox y Google Meet.",
+        "category": "Plataforma"
       }
     }
   }
