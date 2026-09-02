@@ -89,6 +89,22 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 		{http.MethodPut, "/api/v1/documents/" + id + "/title", "documents.manage"},
 		{http.MethodPost, "/api/v1/documents/" + id + "/route", "documents.manage"},
 
+		// Contract authoring: facts and body are manage, like the document row.
+		{http.MethodPost, "/api/v1/documents/contracts", "documents.manage"},
+		{http.MethodPut, "/api/v1/documents/" + id + "/contract", "documents.manage"},
+		{http.MethodPut, "/api/v1/documents/" + id + "/body", "documents.manage"},
+
+		// Parties: naming who contracts is its own authority.
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties", "documents.parties"},
+		{http.MethodDelete, "/api/v1/documents/" + id + "/parties/" + id, "documents.parties"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties/import", "documents.parties"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties/" + id + "/signatories", "documents.parties"},
+
+		// Sending: the act that freezes copies and starts the clock.
+		{http.MethodPost, "/api/v1/documents/" + id + "/send", "documents.send"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/withdraw", "documents.send"},
+		{http.MethodPost, "/api/v1/documents/" + id + "/parties/" + id + "/invite", "documents.send"},
+
 		// Deciding. Signing and refusing to sign are the same authority, and it
 		// is not the authority to draft.
 		{http.MethodPost, "/api/v1/documents/" + id + "/reject", "documents.sign"},
@@ -97,7 +113,8 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 		{http.MethodPost, "/api/v1/documents/" + id + "/sign/eid/poll", "documents.sign"},
 	}
 
-	all := []string{"documents.read", "documents.manage", "documents.sign"}
+	all := []string{"documents.read", "documents.manage", "documents.sign",
+		"documents.parties", "documents.send"}
 
 	for _, tc := range cases {
 		name := tc.method + " " + strings.Replace(tc.path, id, "{id}", 1)
@@ -121,15 +138,42 @@ func TestEveryDocumentsRouteIsGuardedByThePermissionItClaims(t *testing.T) {
 	}
 }
 
+// Тараалт нь хүүхэд гэрээнд тал үүсгээд ШУУД илгээдэг — хоёр үйлдлийн эрхийг
+// давхар шаардана. Дээрх хүснэгт «нэг эрх → нэг маршрут» хэлбэртэй тул энэ
+// хосыг тусад нь барина: аль нэгийг нь дангаар барьсан хүн 403 авах ёстой.
+func TestIssueNeedsBothPartiesAndSend(t *testing.T) {
+	const id = "3f1b9c62-2f1a-4a1c-9d3e-8b7a5c4e1d20"
+	for _, held := range []string{"documents.parties", "documents.send",
+		"documents.read", "documents.manage", "documents.sign"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/"+id+"/issue",
+			strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		routerFor(t, held).ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("holding only %s got past /issue (status %d) — it must need parties AND send",
+				held, rec.Code)
+		}
+	}
+}
+
 // A route added later with no permission at all would pass the table above by
 // simply not being in it. This is the check that notices.
 func TestNoDocumentsRouteIsUnguarded(t *testing.T) {
 	router := routerFor(t, "documents.read").(*chi.Mux)
 
-	var unguarded []string
+	var unguarded, tokenDoor []string
 	err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		if method == http.MethodGet || method == http.MethodHead {
 			return nil // covered by documents.read, which the stub holds
+		}
+		// Урилгын хаалга нь эрхээр бус ТОКЕНоор хамгаалагддаг — доорх
+		// TestTheInvitationDoorIsGuardedByItsToken түүнийг барина. Энд
+		// алгасахдаа НЭРЛЭЖ алгасана: шинэ нэвтрэлтгүй маршрут гарч ирвэл
+		// тэр нь энэ угтварыг зориудаар авах ёстой, санамсаргүй биш.
+		if strings.HasPrefix(route, "/api/v1/contract/") {
+			tokenDoor = append(tokenDoor, method+" "+route)
+			return nil
 		}
 		// Every write must be refused for a member holding only the read right.
 		path := strings.ReplaceAll(route, "/*", "")
@@ -150,5 +194,46 @@ func TestNoDocumentsRouteIsUnguarded(t *testing.T) {
 	}
 	if len(unguarded) > 0 {
 		t.Errorf("these writes were reachable holding only documents.read: %v", unguarded)
+	}
+	// Хаалга нь ганцаараа биш, хэдэн маршрут байх ёстой. Тоо тэглэвэл дээрх
+	// алгасалт бүхэл шалгалтыг чимээгүй унтраасан гэсэн үг.
+	if len(tokenDoor) == 0 {
+		t.Error("урилгын хаалганы маршрутууд алга — алгасалт хоосон юм уу, эсвэл хаалга алдагдсан")
+	}
+}
+
+// Урилгын хаалга нь ЭРХГҮЙ, гэхдээ ХАМГААЛАЛТГҮЙ БИШ.
+//
+// Тэр маршрутуудад нэвтрээгүй хүн хүрдэг — тэр нь зорилго: гэрээ хүлээж
+// авсан хүнд данс байхгүй. Хамгаалалт нь токен: түүнгүйгээр, эсвэл
+// таамагласан токеноор ямар ч мөр буцахгүй.
+//
+// Энэ тестийн сан нь ажилладаггүй порт руу заадаг тул мөрөнд хүрсэн хүсэлт
+// 500 өгнө. Богино токен нь санд ХҮРЭХГҮЙ татгалзана — тиймээс 404 нь
+// «хаалга хаалттай», 500 нь «хаалга нээгдээд сан унасан» гэж уншигдана.
+func TestTheInvitationDoorIsGuardedByItsToken(t *testing.T) {
+	router := routerFor(t, "documents.read").(*chi.Mux)
+
+	var checked int
+	err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if !strings.HasPrefix(route, "/api/v1/contract/") {
+			return nil
+		}
+		path := strings.ReplaceAll(route, "{token}", "not-a-real-token")
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		routerFor(t, "").ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s %s: таамагласан токен %d буцаав, 404 байх ёстой", method, route, rec.Code)
+		}
+		checked++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked == 0 {
+		t.Fatal("урилгын хаалганы нэг ч маршрут олдсонгүй")
 	}
 }

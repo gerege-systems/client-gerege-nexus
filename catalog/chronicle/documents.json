@@ -2,6 +2,22 @@
   "app_id": "io.gerege.nexus.documents",
   "entries": [
     {
+      "version": "2.1.0",
+      "released_at": "2026-09-02",
+      "kind": "feature",
+      "summary": {
+        "mn": "Гэрээний систем: Word загвараас төрж, талууддаа PIN2-оор зурагдаж, дансгүй хүнд ч хүрдэг гэрээ.",
+        "en": "Contracts: born from a Word template, signed by each party with PIN2, reaching even people without an account."
+      },
+      "details": {
+        "mn": "Гэрээ Word загвараас бичигдэж, орлуулга нь нэг гарцаар тавигддаг; гарын үсэг нь PDF дээр PAdES хэлбэрээр зурагдана. Талууд — байгууллага ч, хүн ч — дараалалтайгаар зурна: өмнөх тал зураагүй бол дараагийнх нь зурахгүй. Данстай хүн eID-ээрээ орж ирсэн гэрээгээ олно; дансгүй хүн, дансгүй байгууллагад урилгын холбоосоор хүрнэ. Нэг загвараас хүн бүрд ТУСДАА гэрээ олгох тараалт Excel-ээс талуудаа уншиж чадна. Гэрээ ноорогоор төрж, илгээхээр л илгээгдсэн болно; эргүүлэн татах, дахин нээх боломжтой. Таван тайлан нэмэгдэв. Хоёр шинэ эрх: documents.parties (талуудыг нэрлэх), documents.send (илгээх) — хоёулаа анхдагчаар менежерт олгогдоно.",
+        "en": "A contract is written from a Word template in a single substitution pass; signatures land on the PDF as PAdES. Parties — organisations and people — sign in order: the next party cannot sign before the previous one has. A person with an account finds their contracts after signing in with eID; a person or organisation without one is reached by an invitation link. Issuing hands each person a SEPARATE contract from one template and can read the parties from Excel. A contract is born a draft and becomes sent only by sending; it can be withdrawn and reopened. Five reports were added. Two new permissions: documents.parties (name the parties) and documents.send (dispatch), both granted to managers by default."
+      },
+      "authors": [
+        "craftzbay"
+      ]
+    },
+    {
       "version": "2.0.0",
       "released_at": "2026-08-15",
       "kind": "feature",

@@ -246,6 +246,10 @@ func New(p nexus.Platform, signer nexus.Signer) *DocumentsModule {
 	// constructs this module gets it too, and one that does not gets the
 	// honest ErrNoDocumentFiler.
 	nexus.Provide[nexus.DocumentFiler](filer{m})
+	// Гэрээний тайлангууд. Байгуулагчаас — модуль өөрийгөө бүртгэдэгтэй яг
+	// адил: тайлан нь хөтөлбөрийн эхлэлийн дараалалд биш, модулийн оршихуйд
+	// холбогдоно (`RegisterReport` нь хүлээн авагч ирээгүй бол хадгална).
+	registerReports()
 	return m
 }
 
@@ -285,7 +289,7 @@ func (m *DocumentsModule) Name() string { return "Documents" }
 // a module that was itself at 2.0.0, its permissions are what another app's
 // used to be, and a tenant that had one of the two now has both — none of which
 // a minor version would be telling the truth about.
-func (m *DocumentsModule) Version() string { return "2.0.0" }
+func (m *DocumentsModule) Version() string { return "2.1.0" }
 
 func (m *DocumentsModule) Dependencies() []nexus.Dependency { return nil }
 
@@ -312,12 +316,39 @@ func (m *DocumentsModule) Permissions() []nexus.PermissionDefinition {
 			Description:  "Apply an eID / DAN / HSM digital signature or reject a document",
 			DefaultRoles: []string{nexus.DefaultRoleManager, nexus.DefaultRoleUser},
 		},
+		{Code: "documents.parties", Name: "Name contract parties",
+			Description:  "Add, correct and remove the parties of a contract, and nominate this organisation's signatories",
+			DefaultRoles: []string{nexus.DefaultRoleManager}},
+		{Code: "documents.send", Name: "Send contracts",
+			Description:  "Dispatch a contract to another person or organisation, resend, withdraw and reopen",
+			DefaultRoles: []string{nexus.DefaultRoleManager}},
 	}
 }
 
 func (m *DocumentsModule) Menus() []nexus.MenuDefinition {
 	return []nexus.MenuDefinition{
 		{ID: "documents", ParentID: "operations", Label: "Documents", Path: "/documents", Icon: "file-text", Order: 30, Labels: map[string]string{"mn": "Баримт бичиг", "ar": "المستندات", "zh": "文档", "fr": "Documents", "ru": "Документы", "es": "Documentos"}},
+		// Гэрээ бол энэ аппын ДОТООД дэлгэц: бүрхүүлийн
+		// `/module/documents/contracts` ба `/module/documents/inbox` — бусад
+		// documents дэлгэцтэй (templates, workflows…) яг нэг байранд. Урьд нь
+		// эдгээр нь backend-ийн үйлчилдэг тусдаа хуудас байсан бөгөөд
+		// `ExternalURL`-ээр нээгддэг байв: хэрэглэгч аппаас ГАРЧ өөр
+		// харагдацтай хуудсанд очдог — аппын дэлгэц апп дотроо байх ёстой.
+		{ID: "documents.contracts", ParentID: "operations", Label: "Contracts", Path: "/module/documents/contracts", Icon: "scroll-text", Order: 31, Labels: map[string]string{"mn": "Гэрээ", "ar": "العقود", "zh": "合同", "fr": "Contrats", "ru": "Договоры", "es": "Contratos"}},
+		{ID: "documents.inbox", ParentID: "operations", Label: "Incoming contracts", Path: "/module/documents/inbox", Icon: "inbox", Order: 32, Labels: map[string]string{"mn": "Ирсэн гэрээ", "ar": "العقود الواردة", "zh": "收到的合同", "fr": "Contrats reçus", "ru": "Входящие договоры", "es": "Contratos recibidos"}},
+		// Тайлан — энэ аппын ӨӨРИЙН дэлгэц: таван тайлан (гэрээний бүртгэл,
+		// хүлээгдэж буй гарын үсэг, гарын үсгийн бүртгэл, урсгал, дуусах
+		// гэрээ) параметр, хүснэгт, график, Excel экспорттойгоо.
+		{ID: "documents.reports", ParentID: "operations", Label: "Reports", Path: "/module/documents/reports", Icon: "bar-chart-3", Order: 33, Labels: map[string]string{"mn": "Тайлан", "ar": "التقارير", "zh": "报表", "fr": "Rapports", "ru": "Отчёты", "es": "Informes"}},
+
+		// ТОХИРГОО. Цэсний Тохиргоо группыг платформ өөрөө нээдэг боловч
+		// v1.13.0-д түүнийг зөвхөн цөмийн blueprint дүүргэдэг байсан — гарсан
+		// аппад blueprint байхгүй тул групп нь хоосон зогсдог байв. Модуль
+		// аль дэлгэц нь ТОХИРГОО болохоо id-гаараа хэлнэ: бүрхүүл `.settings.`
+		// агуулсан id-г Тохиргоо группд нь байрлуулна.
+		{ID: "documents.settings.templates", ParentID: "operations", Label: "Templates", Path: "/module/documents/templates", Icon: "files", Order: 10, Labels: map[string]string{"mn": "Загвар", "ar": "القوالب", "zh": "模板", "fr": "Modèles", "ru": "Шаблоны", "es": "Plantillas"}},
+		{ID: "documents.settings.signatures", ParentID: "operations", Label: "Signature policies", Path: "/module/documents/signatures", Icon: "shield-check", Order: 30, Labels: map[string]string{"mn": "Гарын үсгийн бодлого", "ar": "سياسات التوقيع", "zh": "签名策略", "fr": "Politiques de signature", "ru": "Политики подписи", "es": "Políticas de firma"}},
+		{ID: "documents.settings.retention", ParentID: "operations", Label: "Retention", Path: "/module/documents/retention", Icon: "archive", Order: 60, Labels: map[string]string{"mn": "Хадгалалт", "ar": "الاحتفاظ", "zh": "保留策略", "fr": "Conservation", "ru": "Хранение", "es": "Conservación"}},
 	}
 }
 
@@ -336,85 +367,221 @@ const bodyLimit = 64 << 10 // 64 KB, sixteen times the largest real request
 // limitBody refuses an over-large request before it is read, and caps what a
 // chunked one can stream. It sits on the module's whole route group so no handler
 // can forget it.
-func limitBody(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.ContentLength > bodyLimit {
-			nexus.Error(w, http.StatusRequestEntityTooLarge,
-				fmt.Sprintf("the request body is larger than %d bytes", bodyLimit))
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		next.ServeHTTP(w, r)
-	})
+//
+// Хязгаар нь ЯГ ТЭР МАРШРУТЫНХ байх ёстой, бүлгийнх биш.
+//
+// Урьд нь энэ нь бүлэг дээр 64 КБ-аар суудаг байв. JSON хүсэлтэд зөв тоо;
+// PDF хүлээж авдаг `POST /{id}/file`-д харин үхлийн: тэр handler өөрийн 34 МБ
+// уншигчийг тавьдаг ч түүнд хэзээ ч хүрдэггүй байсан. Бүлгийн middleware
+// `ContentLength` дээр аль хэдийн 413 буцаах ба `r.Body`-г 64 КБ-аар ороосон
+// байна; `MaxBytesReader`-ийг дахин ороовол ДОТООД хязгаар хүчинтэй.
+//
+// Үр дүн нь: 64 КБ-аас том PDF-ийг баримтад хавсаргах боломжгүй байсан —
+// гэрээ байгуулах гол зам дээр. Тиймээс хязгаарыг маршрутын шинж чанар
+// болгов: JSON бүлэг 64 КБ-аа хадгална, файлын маршрут өөрийнхөө хэмжээг авна.
+func limitBodyTo(max int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > max {
+				nexus.Error(w, http.StatusRequestEntityTooLarge,
+					fmt.Sprintf("the request body is larger than %d bytes", max))
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, max)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// limitBody нь JSON маршрутуудын анхдагч хязгаар.
+func limitBody(next http.Handler) http.Handler { return limitBodyTo(bodyLimit)(next) }
+
+// tooLarge нь биет хязгаараас хэтэрснийг таньдаг: `ContentLength` мэдэгдээгүй
+// chunked илгээлт дээр 413 нь `MaxBytesReader`-ээс уншилтын АЛДАА болж ирдэг —
+// тэр үед «файл ирсэнгүй» гэсэн 400 биш, шалтгааныг нь хэлсэн 413 буцаана.
+func tooLarge(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
 }
 
 func (m *DocumentsModule) RegisterRoutes(r chi.Router, tenantAuthMiddleware func(http.Handler) http.Handler) {
+	// Гэрээний дэлгэцүүд — ui.go-г үз.
+	m.registerUI(r)
+
+	// ─────────────────────────────────────────── ДАНСГҮЙ ХҮНИЙ ХААЛГА
+	//
+	// Нэвтрэлтгүй, тиймээс `/api/v1/documents` бүлгээс ГАДУУР: тэр бүлэг
+	// бүхэлдээ `tenantAuthMiddleware`-ийн дор амьдардаг ба энэ маршрутуудад
+	// хандах хүн бүртгэлгүй. Хамгаалалт нь эрхийн шалгалт биш, ТОКЕН —
+	// `invite.go`-г үз. Хязгаар нь чанга: холбоос таах цорын ганц зам нь
+	// олон удаа оролдох явдал.
+	r.Route("/api/v1/contract", func(cr chi.Router) {
+		cr.Use(limitBody)
+		guess := nexus.RateLimit(30, 30)
+		cr.With(guess).Get("/{token}", m.inviteShowHandler)
+		cr.With(guess).Get("/{token}/copy", m.inviteCopyHandler)
+		cr.With(guess).Get("/{token}/signed.pdf", m.inviteSignedCopyHandler)
+		cr.With(guess).Post("/{token}/signatory", m.inviteNominateHandler)
+		cr.With(nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)).
+			Post("/{token}/sign/start", m.inviteSignStartHandler)
+		cr.With(guess).Post("/{token}/sign/poll", m.inviteSignPollHandler)
+		cr.With(guess).Post("/{token}/decline", m.inviteDeclineHandler)
+	})
+
 	r.Route("/api/v1/documents", func(dr chi.Router) {
 		dr.Use(tenantAuthMiddleware)
-		dr.Use(limitBody)
 		read := nexus.RequirePermission(m.perms, "documents.read")
 		manage := nexus.RequirePermission(m.perms, "documents.manage")
 		sign := nexus.RequirePermission(m.perms, "documents.sign")
-		dr.With(read).Get("/", m.listDocumentsHandler)
-		dr.With(manage).Post("/", m.createDocumentHandler)
+		// Файл нь JSON биш тул хязгаар нь ч өөр. Энэ маршрут JSON бүлгээс
+		// ГАДУУР бөгөөд өөрийн хэмжээг авна: chi-д `Use` нь бүлгийн бүх
+		// маршрутад үйлчилдэг ба `With` түүнийг дарж бичдэггүй, зөвхөн ард нь
+		// нэмдэг — тиймээс нэг бүлэгт хоёр хэмжээ байрлуулах ганц зам нь
+		// тэднийг салгах явдал.
+		dr.With(manage, limitBodyTo(maxAttachmentBody)).Post("/{id}/file", m.attachFileHandler)
+		// Эдгээр нь мөн адил ТОМ биетэй тул 64 КБ-ийн бүлгээс ГАДУУР:
+		// бүлгийн `Use` нь `With`-ээс түрүүлж ажилладаг тул бүлэг дотор
+		// байрлуулбал жинхэнэ хүчинтэй хязгаар нь 64 КБ болно — Excel
+		// жагсаалт, урт гэрээний текст хоёул тэнд багтахгүй.
+		parties := nexus.RequirePermission(m.perms, "documents.parties")
+		send := nexus.RequirePermission(m.perms, "documents.send")
+		dr.With(parties, limitBodyTo(importBodyLimit)).Post("/{id}/parties/import", m.importPartiesHandler)
+		// Тараалт нь хүүхэд гэрээнд ТАЛ үүсгэдэг тул илгээх эрх дангаараа
+		// хангалтгүй — тал засах эрхийг давхар шаардана.
+		dr.With(parties, send, limitBodyTo(importBodyLimit)).Post("/{id}/issue", m.issueHandler)
+		dr.With(parties, send, limitBodyTo(importBodyLimit)).Post("/{id}/issue/preview", m.issuePreviewHandler)
+		dr.With(manage, limitBodyTo(1<<20)).Put("/{id}/body", m.saveBodyHandler)
 
-		// Templates a document is started from.
-		dr.With(read).Get("/templates", m.listTemplatesHandler)
-		dr.With(manage).Post("/templates", m.createTemplateHandler)
-		dr.With(manage).Put("/templates/{id}", m.updateTemplateHandler)
-		dr.With(manage).Delete("/templates/{id}", m.deleteTemplateHandler)
-		dr.With(manage).Post("/templates/{id}/use", m.useTemplateHandler)
+		// JSON маршрутууд. 64 КБ нь эдгээрт зөв тоо — тайлбарыг `bodyLimit`
+		// дээр үз — бөгөөд тэднийг нэг дор барих нь хэн нэгэн шинэ маршрут
+		// нэмээд хязгаарыг мартах боломжийг хаана.
+		// Гэрээний талууд. Биеийн хязгаар нь JSON-ынхтой ижил — тал бол
+		// хэдэн талбар, PDF биш.
+		dr.Group(func(pr chi.Router) {
+			pr.Use(limitBody)
+			// Гэрээний жагсаалт — баримтын жагсаалтаас тусдаа, тайлбарыг
+			// contractlist.go дээр үз.
+			pr.With(read).Get("/contracts", m.listContractsHandler)
+			pr.With(manage).Post("/contracts", m.createContractHandler)
+			pr.With(manage).Put("/{id}/contract", m.saveContractFactsHandler)
 
-		// How a document type may be signed.
-		dr.With(read).Get("/policies", m.listSignaturePoliciesHandler)
-		dr.With(manage).Put("/policies/{docType}", m.saveSignaturePolicyHandler)
+			pr.With(read).Get("/{id}/parties", m.listPartiesHandler)
+			pr.With(parties).Post("/{id}/parties", m.addPartyHandler)
+			pr.With(read).Get("/parties/import-template.xlsx", m.importTemplateHandler)
+			pr.With(read).Get("/contract-template.docx", m.wordTemplateHandler)
+			pr.With(parties).Delete("/{id}/parties/{pid}", m.removePartyHandler)
+			pr.With(parties).Post("/{id}/parties/{pid}/signatories", m.addSignatoryHandler)
+			pr.With(parties).Delete("/{id}/parties/{pid}/signatories/{sid}", m.removeSignatoryHandler)
 
-		// Who must sign it, in order.
-		dr.With(read).Get("/workflows", m.listWorkflowsHandler)
-		dr.With(manage).Put("/workflows/{docType}", m.saveWorkflowHandler)
+			// Дансгүй тал руу явуулах холбоос. Токен нь хариултад НЭГ УДАА
+			// гарна — санд зөвхөн хеш нь байдаг тул дахин асуух зам байхгүй.
+			pr.With(send).Post("/{id}/parties/{pid}/invite", m.createInviteHandler)
+			pr.With(read).Get("/{id}/parties/{pid}/invitations", m.listInvitesHandler)
+			pr.With(send).Delete("/{id}/parties/{pid}/invitations/{iid}", m.revokeInviteHandler)
 
-		// How long it is kept.
-		dr.With(read).Get("/retention", m.listRetentionRulesHandler)
-		dr.With(manage).Put("/retention/{docType}", m.saveRetentionRuleHandler)
+			// Гэрээний бичвэр. PUT нь том биетэй тул бүлгээс гадуур (дээр).
+			pr.With(read).Get("/{id}/body", m.getBodyHandler)
 
-		// A single document. Static segments above win over {id} in chi's trie,
-		// so "templates" and "policies" are never read as document ids.
-		dr.With(read).Get("/{id}/signatures", m.listSignaturesHandler)
-		// Which channels may sign this one, here. A read: it says what the
-		// screen may offer, not what anybody may do.
-		dr.With(read).Get("/{id}/signing-rails", m.signingRailsHandler)
+			// Илгээх: тал бүрийн PDF энд зурагдаж ХӨЛДӨНӨ.
+			pr.With(send).Post("/{id}/send", m.sendHandler)
+			pr.With(send).Post("/{id}/withdraw", m.withdrawHandler)
+			pr.With(send).Post("/{id}/reopen", m.reopenHandler)
+			pr.With(read).Get("/{id}/parties/{pid}/copy", m.partyCopyHandler)
+			pr.With(read).Get("/{id}/parties/{pid}/signed.pdf", m.partySignedCopyHandler)
 
-		// What the document is about. Attaching is documents.manage — it is
-		// preparing a document rather than signing one — and it is refused
-		// once anything has been signed (ADR 0003).
-		dr.With(manage).Post("/{id}/file", m.attachFileHandler)
-		dr.With(read).Get("/{id}/file", m.downloadFileHandler)
-		dr.With(read).Get("/{id}/steps", m.listDocumentStepsHandler)
-		// Correcting a title is authoring, not approving, so it is checked against
-		// documents.manage like the rest of this group — the path carries no /sign.
-		dr.With(manage).Put("/{id}/title", m.renameDocumentHandler)
-		dr.With(manage).Post("/{id}/route", m.routeDocumentHandler)
-		dr.With(sign).Post("/{id}/reject", m.rejectDocumentHandler)
+			// Талын өмнөөс гарын үсэг зурах. Дугаар нь бүртгэлээс гарна,
+			// хүсэлтийн биеэс хэзээ ч биш.
+			signBudget := nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)
+			pr.With(sign, signBudget).Post("/{id}/parties/{pid}/sign/start", m.partySignStartHandler)
+			pr.With(sign).Post("/{id}/parties/{pid}/sign/poll", m.partySignPollHandler)
+			pr.With(sign).Post("/{id}/parties/{pid}/decline", m.declinePartyHandler)
 
-		// Signing is per channel, because the channels are not the same shape.
-		// E-ID is an approval the citizen gives on their own device, so it takes
-		// two calls; DAN is a code they read out, so it takes one.
-		//
-		// The start is budgeted: it is the one that reaches a citizen's phone. The poll
-		// is not — a citizen takes as long as they take to find it, and throttling the
-		// watching would only lose approvals. DAN is a code the citizen reads out, so it
-		// pushes nothing, but it is budgeted with the same bucket because it is still an
-		// authentication attempt against a real person's credentials.
-		//
-		// One budget, shared by both routes: they are two ways to make the same
-		// demand on the same person. nexus.RateLimit returns pass-through
-		// middleware on a deployment that provides no limiter — a module built
-		// by hand in a test still routes, which is what the nil check here used
-		// to be for.
-		budget := nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)
-		dr.With(sign, budget).Post("/{id}/sign/eid/start", m.startEIDSignatureHandler)
-		dr.With(sign, budget).Post("/{id}/sign/dan", m.signWithDANHandler)
-		dr.With(sign).Post("/{id}/sign/eid/poll", m.pollEIDSignatureHandler)
+			// ХҮЛЭЭН АВАГЧИЙН ГАДАРГУУ.
+			//
+			// `/{id}/...`-ийн доор БИШ, санаатайгаар: тэдгээр маршрут нь
+			// баримтын id-гаар эхэлдэг бөгөөд хүлээн авагч тэр баримтыг
+			// эзэмшдэггүй. Энд хаяг нь ТАЛЫН id — хүлээн авагчид өгөгдсөн
+			// цорын ганц зүйл — ба хүрэх эрх нь тэр мөрөөс гарна.
+			//
+			// Эрх: унших ба гарын үсэг зурах нь ердийн хэрэглэгчийнх; ХЭН
+			// гарын үсэг зурахыг шийдэх нь `documents.parties` — тэр нь
+			// хүлээн авагчийн ӨӨРИЙН байгууллагад асуугдана, учир нь эрх
+			// нь идэвхтэй байгууллагын гишүүнчлэлээс гардаг.
+			pr.With(read).Get("/inbox", m.inboxHandler)
+			pr.With(read).Get("/inbox/{pid}", m.inboxShowHandler)
+			pr.With(read).Get("/inbox/{pid}/copy", m.inboxCopyHandler)
+			pr.With(read).Get("/inbox/{pid}/signed.pdf", m.inboxSignedCopyHandler)
+			pr.With(read).Get("/inbox/{pid}/signatories", m.inboxSignatoriesHandler)
+			pr.With(parties).Post("/inbox/{pid}/signatories", m.inboxNominateHandler)
+			pr.With(parties).Delete("/inbox/{pid}/signatories/{sid}", m.inboxWithdrawNomineeHandler)
+			pr.With(sign, signBudget).Post("/inbox/{pid}/sign/start", m.inboxSignStartHandler)
+			pr.With(sign).Post("/inbox/{pid}/sign/poll", m.inboxSignPollHandler)
+			pr.With(sign).Post("/inbox/{pid}/decline", m.inboxDeclineHandler)
+		})
+
+		dr.Group(func(jr chi.Router) {
+			jr.Use(limitBody)
+
+			jr.With(read).Get("/", m.listDocumentsHandler)
+			jr.With(manage).Post("/", m.createDocumentHandler)
+
+			// Templates a document is started from.
+			jr.With(read).Get("/templates", m.listTemplatesHandler)
+			jr.With(manage).Post("/templates", m.createTemplateHandler)
+			jr.With(manage).Put("/templates/{id}", m.updateTemplateHandler)
+			jr.With(manage).Delete("/templates/{id}", m.deleteTemplateHandler)
+			jr.With(manage).Post("/templates/{id}/use", m.useTemplateHandler)
+
+			// How a document type may be signed.
+			jr.With(read).Get("/policies", m.listSignaturePoliciesHandler)
+			jr.With(manage).Put("/policies/{docType}", m.saveSignaturePolicyHandler)
+
+			// Who must sign it, in order.
+			jr.With(read).Get("/workflows", m.listWorkflowsHandler)
+			jr.With(manage).Put("/workflows/{docType}", m.saveWorkflowHandler)
+
+			// How long it is kept.
+			jr.With(read).Get("/retention", m.listRetentionRulesHandler)
+			jr.With(manage).Put("/retention/{docType}", m.saveRetentionRuleHandler)
+
+			// A single document. Static segments above win over {id} in chi's trie,
+			// so "templates" and "policies" are never read as document ids.
+			jr.With(read).Get("/{id}/signatures", m.listSignaturesHandler)
+			// Which channels may sign this one, here. A read: it says what the
+			// screen may offer, not what anybody may do.
+			jr.With(read).Get("/{id}/signing-rails", m.signingRailsHandler)
+
+			// What the document is about. Attaching is documents.manage — it is
+			// preparing a document rather than signing one — and it is refused
+			// once anything has been signed (ADR 0003).
+			jr.With(read).Get("/{id}/file", m.downloadFileHandler)
+			jr.With(read).Get("/{id}/steps", m.listDocumentStepsHandler)
+			// Correcting a title is authoring, not approving, so it is checked against
+			// documents.manage like the rest of this group — the path carries no /sign.
+			jr.With(manage).Put("/{id}/title", m.renameDocumentHandler)
+			jr.With(manage).Post("/{id}/route", m.routeDocumentHandler)
+			jr.With(sign).Post("/{id}/reject", m.rejectDocumentHandler)
+
+			// Signing is per channel, because the channels are not the same shape.
+			// E-ID is an approval the citizen gives on their own device, so it takes
+			// two calls; DAN is a code they read out, so it takes one.
+			//
+			// The start is budgeted: it is the one that reaches a citizen's phone. The poll
+			// is not — a citizen takes as long as they take to find it, and throttling the
+			// watching would only lose approvals. DAN is a code the citizen reads out, so it
+			// pushes nothing, but it is budgeted with the same bucket because it is still an
+			// authentication attempt against a real person's credentials.
+			//
+			// One budget, shared by both routes: they are two ways to make the same
+			// demand on the same person. nexus.RateLimit returns pass-through
+			// middleware on a deployment that provides no limiter — a module built
+			// by hand in a test still routes, which is what the nil check here used
+			// to be for.
+			budget := nexus.RateLimit(float64(signPushRatePerMinute), signPushBurst)
+			jr.With(sign, budget).Post("/{id}/sign/eid/start", m.startEIDSignatureHandler)
+			jr.With(sign, budget).Post("/{id}/sign/dan", m.signWithDANHandler)
+			jr.With(sign).Post("/{id}/sign/eid/poll", m.pollEIDSignatureHandler)
+		})
 	})
 
 	// The PDF rails, mounted by the app that now owns them.
@@ -454,6 +621,9 @@ func (m *DocumentsModule) listDocumentsHandler(w http.ResponseWriter, r *http.Re
 		Search:  query.Get("q"),
 		Order:   query.Get("order"),
 		AfterID: strings.TrimSpace(query.Get("after_id")),
+		// Анхдагч нь БҮГД — API-ийн хуучин дуудагчид юу ч өөрчлөгдөхгүй;
+		// бүртгэлийн дэлгэц л contracts=exclude гэж ил хэлдэг.
+		ExcludeContracts: query.Get("contracts") == "exclude",
 	}
 	if raw := strings.TrimSpace(query.Get("after_at")); raw != "" {
 		at, parseErr := time.Parse(time.RFC3339Nano, raw)
@@ -723,6 +893,10 @@ type verifiedSignature struct {
 	// there was nothing to cover. See ADR 0003.
 	Format        domain.Format
 	CoveredDigest string
+	// SignedPDF нь PAdES ёслолоос буцаж ирсэн, гарын үсэг шигтгэсэн баримт.
+	// Түүнийг ЭНД авч явах нь дараалал: файл нь гарын үсгийн гүйлгээ дотор,
+	// эрхийн шалгалт өнгөрсний дараа л хадгалагдана. Detached ёслолд хоосон.
+	SignedPDF []byte
 }
 
 // signaturePreflight is what the document's own configuration decides before a
@@ -1047,6 +1221,27 @@ func (m *DocumentsModule) writeSignature(ctx context.Context, tenantID, docID, m
 		return nil, err
 	}
 
+	// Гарын үсэгтэй PDF нь ЭНД, эрхийн шалгалтын ДАРАА, энэ гүйлгээний дотор
+	// хадгалагдана.
+	//
+	// Урьд нь тэр нь рельсээс ирмэгц шууд бичигддэг байв — өөрөөр хэлбэл
+	// `checkSigner`-ээс ӨМНӨ. Дараалал нь эрхийн шугам: дарааллын нэрлээгүй
+	// хүн PIN2-оороо зөвшөөрөхөд гарын үсэг нь татгалзагдсан ч түүний
+	// гарын үсэг агуулсан PDF нь `document_files.signed_content`-д үлдэж,
+	// `pdfToSign` дараагийн хүнд ЯГ ТЭР файлыг өгдөг байсан. Тэгэхээр
+	// эрхгүй хүний гарын үсэг баримтад суусаар үлдэнэ.
+	//
+	// Гүйлгээ дотор байх нь мөн адил чухал: гарын үсэг бичигдээгүй бол файл
+	// ч өөрчлөгдөхгүй, хоёулаа хамт эргэнэ.
+	if len(signature.SignedPDF) > 0 {
+		if _, err := tx.Exec(ctx,
+			`UPDATE document_files SET signed_content = $3, signed_at = NOW()
+			  WHERE document_id = $1 AND tenant_id = $2`,
+			docID, tenantID, signature.SignedPDF); err != nil {
+			return nil, fmt.Errorf("store the signed document: %w", err)
+		}
+	}
+
 	// The signature fills the step it was checked against — not "the next number",
 	// which is not the same thing once a signature can sit on a later step than an
 	// unfilled earlier one.
@@ -1293,6 +1488,12 @@ type DocumentFilter struct {
 	Search string
 	// Order is ListOrderOldest, or empty for newest first.
 	Order string
+	// ExcludeContracts drops the documents that live in the contracts screen.
+	// The plain register answers "what has this organisation filed"; a contract
+	// with parties has its own screen, its own states and its own list, and
+	// showing it in both places made people sign it from the wrong one — the
+	// register's sign button knows nothing about parties or frozen copies.
+	ExcludeContracts bool
 	// AfterAt and AfterID continue from a row already seen: the answer holds only the
 	// documents that come after it in this order.
 	//
@@ -1361,6 +1562,9 @@ func (m *DocumentsModule) ListDocuments(ctx context.Context, tenantID string, fi
 		   AND ($2 = '' OR d.status = $2)
 		   AND ($3 = '' OR d.doc_type = $3)
 		   AND ($4 = '' OR ` + m.titleMatch(ctx) + `)`
+	if filter.ExcludeContracts {
+		where += ` AND d.contract_state = 'NONE'`
+	}
 
 	// The count and the rows are two statements, so a document created or deleted
 	// between them can leave the total off by one or two. That is deliberate: both ask
@@ -1454,6 +1658,10 @@ func (m *DocumentsModule) scanDocument(row rowScanner) (*Document, error) {
 // actorFor names who did it in the audit log, preferring the email an
 // administrator reading the log would recognise. Calls that arrive outside a
 // request — a migration, a test — have no claims and are recorded as the system.
+// actorFor нь АУДИТЫН мөрөнд бичигдэх хүн — уншигдахуйц нэр, имэйл байж
+// болно. ЭНЭ УТГЫГ UUID БАГАНА РУУ ХЭЗЭЭ Ч БҮҮ ӨГ: имэйлийг `::uuid` рүү
+// хөрвүүлэх нь 22P02 бөгөөд бүхэл хүсэлтийг 500 болгоно. Тэр алдаа нэг удаа
+// амьдаар гарсан — саны багана руу `actorID`-г л өгнө.
 func actorFor(ctx context.Context) string {
 	claims, err := nexus.UserFromContext(ctx)
 	if err != nil {
@@ -1461,6 +1669,17 @@ func actorFor(ctx context.Context) string {
 	}
 	if claims.Email != "" {
 		return claims.Email
+	}
+	return claims.UserID
+}
+
+// actorID нь `created_by`, `uploaded_by` мэт UUID баганад бичигдэх утга.
+// Нэвтрээгүй бол хоосон — дуудагч бүр `NULLIF($n,”)::uuid`-ээр ороодог тул
+// хоосон нь NULL болно.
+func actorID(ctx context.Context) string {
+	claims, err := nexus.UserFromContext(ctx)
+	if err != nil {
+		return ""
 	}
 	return claims.UserID
 }
@@ -1479,6 +1698,16 @@ func isUniqueViolation(err error) bool {
 func isConstraintViolation(err error, name string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == name
+}
+
+// isCheckViolation нь нэрлэсэн CHECK-ийн зөрчил.
+//
+// 23505-аас тусдаа: давхардал нь «энэ аль хэдийн байна» (409), CHECK нь
+// «илгээсэн зүйл чинь утгагүй» (400). Хоёуланг нь нэг функцээр барих нь
+// дуудагчид тэр ялгааг хийх боломж үлдээхгүй.
+func isCheckViolation(err error, name string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == name
 }
 
 // writeWriteFailure sorts a failed write into the class its caller can act on:
