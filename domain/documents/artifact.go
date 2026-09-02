@@ -34,10 +34,29 @@ func (a Artifact) Present() bool { return a.SHA256 != "" }
 
 // MaxArtifactBytes is the ceiling on what may be attached.
 //
-// The same 25MB the PDF rail enforces, because a PDF goes down that rail and a
-// document this app accepted but the rail refused would be a document that
-// cannot be signed — discovered by whoever tried, not by whoever uploaded.
-const MaxArtifactBytes = 25 << 20
+// Гэрээ бол заримдаа том баримт: хавсралт, зураг, план бүхий барилгын гэрээ
+// хэдэн арван мегабайт болдог. Тиймээс хавсаргах тааз нь гарын үсгийн
+// рельсийн таазаас ТУСДАА байна.
+//
+// Урьд нь энэ хоёр нэг байсан бөгөөд шалтгаан нь зөв байв: рельс татгалзах
+// баримтыг хүлээж авбал «хавсаргасан ч зурагдахгүй» баримт үүснэ. Гэвч тэр нь
+// шийдэл биш, зайлсхийлт байсан — том гэрээг огт хавсаргуулахгүй байснаараа.
+//
+// Жинхэнэ шийдэл нь ФОРМАТ: 25 МБ-аас том PDF нь PAdES-ээр (гарын үсгийг
+// баримт дотор шигтгэх) биш, DETACHED-ээр (хеш дээр) зурагдана. Detached
+// ёслолд зөвхөн SHA-256 л рельс рүү явдаг тул хэмжээний хязгаар байхгүй.
+// Гарын үсэг нь адилхан хүчинтэй; ялгаа нь тэр PDF-ийн дотор сууж байхгүй,
+// хажууд нь бүртгэгдэнэ.
+const MaxArtifactBytes = 100 << 20
+
+// MaxEmbeddedSignatureBytes нь PAdES боломжтой хамгийн том баримт.
+//
+// Энэ тоог бид сонгоогүй: `open-gerege-core`-ийн гарын үсгийн usecase
+// (`sign_usecase.go`, maxPDFBytes) ба платформын esign рельс хоёулаа 25 МБ
+// дээр татгалздаг. Түүнээс том баримтыг PAdES-ээр илгээх нь рельсийн алдаа
+// авах ба хэрэглэгчид ойлгомжгүй байна — тиймээс энд мэдээд detached руу
+// шилжинэ.
+const MaxEmbeddedSignatureBytes = 25 << 20
 
 // Format is how a signature covers what the document carries.
 type Format string
@@ -82,8 +101,13 @@ func FormatFor(artifact Artifact, pdfRail bool) Format {
 	switch {
 	case !artifact.Present():
 		return FormatApproval
-	case IsPDF(artifact.ContentType) && pdfRail:
+	case IsPDF(artifact.ContentType) && pdfRail && artifact.SizeBytes <= MaxEmbeddedSignatureBytes:
 		return FormatPAdES
+	case IsPDF(artifact.ContentType) && pdfRail:
+		// 25 МБ-аас том PDF. Рельс түүнийг дотроо гарын үсэглэж чадахгүй тул
+		// хеш дээр нь зурна — гарын үсэг адилхан хүчинтэй, зөвхөн баримтын
+		// дотор биш, хажууд нь бүртгэгдэнэ.
+		return FormatDetached
 	default:
 		return FormatDetached
 	}

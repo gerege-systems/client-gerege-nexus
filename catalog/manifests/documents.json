@@ -1,7 +1,7 @@
 {
   "id": "io.gerege.nexus.documents",
   "name": "Documents",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "platform": ">=0.1.0 <2.0.0",
   "order": 10,
   "publisher": "gerege",
@@ -34,6 +34,22 @@
       "code": "documents.sign",
       "name": "Sign Documents",
       "description": "Allows applying an eID / DAN / HSM digital signature or rejecting a document"
+    },
+    {
+      "code": "documents.parties",
+      "name": "Name contract parties",
+      "description": "Add, correct and remove the parties of a contract, and nominate this organisation's signatories",
+      "default_roles": [
+        "manager"
+      ]
+    },
+    {
+      "code": "documents.send",
+      "name": "Send contracts",
+      "description": "Dispatch a contract to another person or organisation, resend, withdraw and reopen",
+      "default_roles": [
+        "manager"
+      ]
     }
   ],
   "menus": [
